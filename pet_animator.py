@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from math import sin
 
 
-VALID_STATES = {"idle", "happy", "sleep", "walk", "talk", "hidden"}
-CLICK_SEQUENCE = ["idle", "happy", "idle", "walk", "sleep"]
+VALID_STATES = {"idle", "happy", "sleep", "angry", "walk", "talk", "hidden"}
+CLICK_SEQUENCE = ["idle", "happy", "angry", "idle", "walk", "sleep"]
 
 
 @dataclass(frozen=True)
@@ -71,6 +71,8 @@ class PetAnimator:
     def _body_y(self) -> int:
         if self.state == "happy":
             return -6 if (self.tick // 6) % 2 == 0 else 0
+        if self.state == "angry":
+            return -3 if (self.tick // 4) % 2 == 0 else 1
         if self.state == "sleep":
             return 2
         return int(sin(self.tick / 8) * 2)

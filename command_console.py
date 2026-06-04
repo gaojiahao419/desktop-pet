@@ -4,7 +4,7 @@ from threading import Thread
 from PyQt5.QtCore import QObject, pyqtSignal
 
 
-STATE_COMMANDS = {"idle", "happy", "sleep", "walk"}
+STATE_COMMANDS = {"idle", "happy", "sleep", "angry", "walk"}
 SIMPLE_COMMANDS = STATE_COMMANDS | {"help", "hide", "show", "quit"}
 
 HELP_TEXT = """可用命令:
@@ -12,6 +12,7 @@ HELP_TEXT = """可用命令:
   idle              切换到待机
   happy             切换到开心
   sleep             切换到睡觉
+  angry             切换到生气
   walk              切换到走动
   say <文本>        让宠物显示一句话
   chat <文本>       和宠物本地对话

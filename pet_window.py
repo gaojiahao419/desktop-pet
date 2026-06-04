@@ -4,9 +4,13 @@ from PyQt5.QtWidgets import QAction, QLabel, QMenu, QVBoxLayout, QWidget
 from PIL import Image
 
 from dialogue import LocalDialogue
-from pet_animator import PetAnimator
+from pet_animator import PetAnimator, VALID_STATES
 from pet_renderer import PetRenderer
 from video_pet_source import VideoPetSource, clamp_scale
+
+
+def select_video_source_for_state(state: str, state_sources: dict, default_source):
+    return state_sources.get(state) or default_source
 
 
 class PetWindow(QWidget):
@@ -16,6 +20,7 @@ class PetWindow(QWidget):
         self.dialogue = dialogue
         self.renderer = PetRenderer()
         self.video_source = None
+        self.state_video_sources = {}
         self.scale = 1.0
         self.base_size = 220
         self.image_label = QLabel(self)
@@ -40,8 +45,9 @@ class PetWindow(QWidget):
 
     def refresh_frame(self) -> None:
         frame = self.animator.advance()
-        if self.video_source is not None:
-            image = self.video_source.next_frame()
+        video_source = select_video_source_for_state(frame.state, self.state_video_sources, self.video_source)
+        if video_source is not None:
+            image = video_source.next_frame()
         else:
             image = self.renderer.render(frame, self.animator.speech_text)
         image = self._resize_image(image)
@@ -63,6 +69,16 @@ class PetWindow(QWidget):
 
     def clear_video_source(self) -> None:
         self.video_source = None
+        self.show_pet()
+
+    def set_state_video_source(self, state: str, source: VideoPetSource) -> None:
+        if state not in VALID_STATES:
+            raise ValueError(f"Unsupported pet state: {state}")
+        self.state_video_sources[state] = source
+        self.show_pet()
+
+    def clear_state_video_source(self, state: str) -> None:
+        self.state_video_sources.pop(state, None)
         self.show_pet()
 
     def set_scale(self, scale: float) -> None:

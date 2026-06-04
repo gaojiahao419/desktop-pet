@@ -50,6 +50,8 @@ class PetRenderer:
     def _body_color(self, state: str) -> tuple:
         if state == "happy":
             return (255, 205, 111, 255)
+        if state == "angry":
+            return (238, 112, 92, 255)
         if state == "sleep":
             return (190, 204, 232, 255)
         if state == "walk":
@@ -59,7 +61,12 @@ class PetRenderer:
         return (246, 196, 132, 255)
 
     def _draw_face(self, draw: ImageDraw.ImageDraw, frame: PetFrame, cx: int, cy: int) -> None:
-        if frame.eye_closed:
+        if frame.state == "angry":
+            draw.line((cx - 32, cy - 30, cx - 15, cy - 20), fill=(40, 40, 40, 255), width=4)
+            draw.line((cx + 15, cy - 20, cx + 32, cy - 30), fill=(40, 40, 40, 255), width=4)
+            draw.ellipse((cx - 30, cy - 21, cx - 16, cy - 7), fill=(30, 30, 35, 255))
+            draw.ellipse((cx + 16, cy - 21, cx + 30, cy - 7), fill=(30, 30, 35, 255))
+        elif frame.eye_closed:
             draw.arc((cx - 31, cy - 20, cx - 13, cy - 4), 0, 180, fill=(40, 40, 40, 255), width=3)
             draw.arc((cx + 13, cy - 20, cx + 31, cy - 4), 0, 180, fill=(40, 40, 40, 255), width=3)
         else:
@@ -70,6 +77,8 @@ class PetRenderer:
             draw.ellipse((cx - 8, cy + 4, cx + 8, cy + 20), fill=(90, 45, 55, 255))
         elif frame.state == "happy":
             draw.arc((cx - 12, cy, cx + 12, cy + 18), 0, 180, fill=(90, 45, 55, 255), width=3)
+        elif frame.state == "angry":
+            draw.arc((cx - 12, cy + 8, cx + 12, cy + 26), 180, 360, fill=(90, 45, 55, 255), width=3)
         else:
             draw.line((cx - 8, cy + 10, cx + 8, cy + 10), fill=(90, 45, 55, 255), width=3)
 

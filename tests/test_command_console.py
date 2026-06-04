@@ -5,6 +5,10 @@ def test_parse_simple_state_command():
     assert parse_command("happy") == Command(name="happy", text="")
 
 
+def test_parse_angry_state_command():
+    assert parse_command("angry") == Command(name="angry", text="")
+
+
 def test_parse_say_command_preserves_text():
     assert parse_command("say 你好 桌面") == Command(name="say", text="你好 桌面")
 

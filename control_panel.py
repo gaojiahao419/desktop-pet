@@ -11,10 +11,19 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSlider,
     QVBoxLayout,
     QWidget,
 )
+
+
+STATE_MATERIALS = [
+    ("idle", "待机动作", "平静待机循环"),
+    ("happy", "高兴动作", "点击或切换开心时播放"),
+    ("sleep", "睡觉动作", "睡觉状态循环"),
+    ("angry", "生气动作", "生气状态循环"),
+]
 
 
 class ControlPanelWindow(QWidget):
@@ -23,6 +32,8 @@ class ControlPanelWindow(QWidget):
     chat_requested = pyqtSignal(str)
     video_requested = pyqtSignal(str, tuple, int)
     reset_video_requested = pyqtSignal()
+    state_video_requested = pyqtSignal(str, str, tuple, int)
+    reset_state_video_requested = pyqtSignal(str)
     scale_requested = pyqtSignal(float)
     quit_requested = pyqtSignal()
 
@@ -30,6 +41,9 @@ class ControlPanelWindow(QWidget):
         super().__init__()
         self.background_color = (0, 255, 0)
         self.current_material = "内置绘制宠物"
+        self.state_material_names = {state: "未绑定，使用内置绘制" for state, _title, _hint in STATE_MATERIALS}
+        self.state_material_labels = {}
+        self.state_status_labels = {}
         self.setWindowTitle("桌面宠物控制面板")
         self.setMinimumSize(1000, 680)
         self.setObjectName("controlPanel")
@@ -75,7 +89,7 @@ class ControlPanelWindow(QWidget):
     def _build_left_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("leftPanel")
-        panel.setFixedWidth(340)
+        panel.setFixedWidth(380)
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(14)
@@ -84,34 +98,73 @@ class ControlPanelWindow(QWidget):
         title.setObjectName("sectionTitle")
         layout.addWidget(title)
 
-        self.current_material_card = self._build_material_card(
-            title="当前素材",
-            subtitle=self.current_material,
-            tag="已绑定：宠物窗口",
-            primary_label="上传 MP4",
-            secondary_label="恢复默认",
-            primary_callback=self._choose_video,
-            secondary_callback=self._reset_video,
-        )
-        layout.addWidget(self.current_material_card)
-
-        default_card = self._build_material_card(
-            title="默认宠物",
-            subtitle="内置绘制素材",
-            tag="备用素材",
-            primary_label="切换",
-            secondary_label="显示宠物",
-            primary_callback=self._reset_video,
-            secondary_callback=lambda: self.state_requested.emit("show"),
-        )
-        layout.addWidget(default_card)
-
         hint = QLabel("上传透明 MP4 时会优先读取 Alpha；没有 Alpha 时使用背景色和容差透明化。")
         hint.setObjectName("hintText")
         hint.setWordWrap(True)
         layout.addWidget(hint)
-        layout.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setObjectName("materialScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        content = QWidget()
+        content.setObjectName("materialScrollContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+        for state, title, subtitle in STATE_MATERIALS:
+            content_layout.addWidget(self._build_state_material_card(state, title, subtitle))
+        content_layout.addStretch(1)
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
         return panel
+
+    def _build_state_material_card(self, state: str, title: str, subtitle: str) -> QWidget:
+        card = QFrame()
+        card.setObjectName("materialCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        header = QHBoxLayout()
+        thumb = QLabel("MP4")
+        thumb.setObjectName("thumbBadge")
+        text_box = QVBoxLayout()
+        name = QLabel(title)
+        name.setObjectName("materialTitle")
+        detail = QLabel(self.state_material_names[state])
+        detail.setObjectName("materialSubtitle")
+        detail.setWordWrap(True)
+        text_box.addWidget(name)
+        text_box.addWidget(detail)
+        header.addWidget(thumb, 0)
+        header.addLayout(text_box, 1)
+        layout.addLayout(header)
+
+        status = QLabel(subtitle)
+        status.setObjectName("boundTag")
+        layout.addWidget(status, 0, Qt.AlignLeft)
+
+        self.state_material_labels[state] = detail
+        self.state_status_labels[state] = status
+
+        buttons = QGridLayout()
+        buttons.setSpacing(8)
+        upload = QPushButton("上传 MP4")
+        upload.setObjectName("orangeButton")
+        switch = QPushButton("切换动作")
+        switch.setObjectName("lightButton")
+        reset = QPushButton("解绑素材")
+        reset.setObjectName("darkButton")
+        upload.clicked.connect(lambda _checked=False, value=state: self._choose_state_video(value))
+        switch.clicked.connect(lambda _checked=False, value=state: self.state_requested.emit(value))
+        reset.clicked.connect(lambda _checked=False, value=state: self._reset_state_video(value))
+        buttons.addWidget(upload, 0, 0)
+        buttons.addWidget(switch, 0, 1)
+        buttons.addWidget(reset, 1, 0, 1, 2)
+        layout.addLayout(buttons)
+        return card
 
     def _build_material_card(
         self,
@@ -270,6 +323,7 @@ class ControlPanelWindow(QWidget):
             ("待机", "idle", "lightButton"),
             ("开心", "happy", "orangeButton"),
             ("睡觉", "sleep", "lightButton"),
+            ("生气", "angry", "dangerButton"),
             ("走动", "walk", "lightButton"),
             ("隐藏", "hide", "darkButton"),
             ("显示", "show", "orangeButton"),
@@ -278,7 +332,7 @@ class ControlPanelWindow(QWidget):
             button = QPushButton(label)
             button.setObjectName(object_name)
             button.clicked.connect(lambda _checked=False, value=state: self.state_requested.emit(value))
-            layout.addWidget(button, index // 3, index % 3)
+            layout.addWidget(button, index // 4, index % 4)
         return card
 
     def _build_dialogue_card(self) -> QWidget:
@@ -310,10 +364,34 @@ class ControlPanelWindow(QWidget):
         self.status_label.setText(f"状态：已选择 {self.current_material}")
         self.video_requested.emit(path, self.background_color, self.tolerance_slider.value())
 
+    def _choose_state_video(self, state: str) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "选择动作 MP4 素材", "", "MP4 视频 (*.mp4)")
+        if not path:
+            return
+        material_name = Path(path).name
+        self.state_material_names[state] = material_name
+        self.state_material_labels[state].setText(material_name)
+        self.state_status_labels[state].setText("已绑定：动作素材")
+        self.status_label.setText(f"状态：{self._state_title(state)} 已绑定 {material_name}")
+        self.state_video_requested.emit(state, path, self.background_color, self.tolerance_slider.value())
+
     def _reset_video(self) -> None:
         self.current_material = "内置绘制宠物"
         self.status_label.setText("状态：使用内置绘制宠物")
         self.reset_video_requested.emit()
+
+    def _reset_state_video(self, state: str) -> None:
+        self.state_material_names[state] = "未绑定，使用内置绘制"
+        self.state_material_labels[state].setText(self.state_material_names[state])
+        self.state_status_labels[state].setText("未绑定：使用默认")
+        self.status_label.setText(f"状态：{self._state_title(state)} 已解绑素材")
+        self.reset_state_video_requested.emit(state)
+
+    def _state_title(self, state: str) -> str:
+        for key, title, _subtitle in STATE_MATERIALS:
+            if key == state:
+                return title
+        return state
 
     def _set_background_color(self, color: tuple) -> None:
         self.background_color = color
@@ -362,6 +440,26 @@ class ControlPanelWindow(QWidget):
                 background: #15171b;
                 border: 1px solid #25282f;
                 border-radius: 14px;
+            }
+
+            QScrollArea#materialScroll {
+                background: transparent;
+                border: 0;
+            }
+
+            QWidget#materialScrollContent {
+                background: transparent;
+            }
+
+            QScrollBar:vertical {
+                background: #15171b;
+                border: 0;
+                width: 8px;
+            }
+
+            QScrollBar::handle:vertical {
+                background: #333844;
+                border-radius: 4px;
             }
 
             QLabel#sectionTitle {

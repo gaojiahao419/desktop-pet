@@ -10,6 +10,14 @@ from pet_window import PetWindow
 from video_pet_source import VideoPetSource
 
 
+STATE_LABELS = {
+    "idle": "待机动作",
+    "happy": "高兴动作",
+    "sleep": "睡觉动作",
+    "angry": "生气动作",
+}
+
+
 def main() -> int:
     app = QApplication(sys.argv)
     dialogue = LocalDialogue()
@@ -57,11 +65,26 @@ def main() -> int:
         control_panel.set_status(f"当前素材：{path}")
         print(f"已加载视频素材: {path}")
 
+    def load_state_video(state: str, path: str, background_color: tuple, tolerance: int) -> None:
+        try:
+            source = VideoPetSource.from_path(path, background_color, tolerance)
+        except Exception as exc:
+            message = f"{STATE_LABELS.get(state, state)}素材加载失败：{exc}"
+            control_panel.set_status(message)
+            print(message)
+            return
+        window.set_state_video_source(state, source)
+        window.set_state(state)
+        control_panel.set_status(f"{STATE_LABELS.get(state, state)}素材已绑定：{path}")
+        print(f"已绑定{STATE_LABELS.get(state, state)}素材: {path}")
+
     control_panel.state_requested.connect(apply_state)
     control_panel.say_requested.connect(say_text)
     control_panel.chat_requested.connect(chat_text)
     control_panel.video_requested.connect(load_video)
     control_panel.reset_video_requested.connect(window.clear_video_source)
+    control_panel.state_video_requested.connect(load_state_video)
+    control_panel.reset_state_video_requested.connect(window.clear_state_video_source)
     control_panel.scale_requested.connect(window.set_scale)
     control_panel.quit_requested.connect(app.quit)
 
@@ -72,7 +95,7 @@ def main() -> int:
         if command.name == "help":
             print(HELP_TEXT)
             return
-        if command.name in {"idle", "happy", "sleep", "walk"}:
+        if command.name in {"idle", "happy", "sleep", "angry", "walk"}:
             apply_state(command.name)
             print(f"状态已切换: {command.name}")
             return
