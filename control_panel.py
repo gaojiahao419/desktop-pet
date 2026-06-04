@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
@@ -5,7 +7,6 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -28,355 +29,492 @@ class ControlPanelWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.background_color = (0, 255, 0)
-        self.setWindowTitle("桌面宠物控制台")
-        self.setMinimumWidth(430)
+        self.current_material = "内置绘制宠物"
+        self.setWindowTitle("桌面宠物控制面板")
+        self.setMinimumSize(820, 560)
         self.setObjectName("controlPanel")
         self._apply_style()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 18, 18, 18)
         root.setSpacing(12)
+        root.addWidget(self._build_title_bar())
 
-        root.addWidget(self._build_header())
-        root.addWidget(self._build_material_group())
-        root.addWidget(self._build_transparency_group())
-        root.addWidget(self._build_size_group())
-        root.addWidget(self._build_action_group())
-        root.addWidget(self._build_dialogue_group())
+        content = QHBoxLayout()
+        content.setSpacing(14)
+        content.addWidget(self._build_left_panel(), 0)
+        content.addWidget(self._build_right_panel(), 1)
+        root.addLayout(content, 1)
 
-        self.status_label = QLabel("当前素材：内置绘制宠物")
-        self.status_label.setObjectName("statusLabel")
+        footer = QHBoxLayout()
+        footer.setSpacing(10)
+        self.status_label = QLabel("状态：使用内置绘制宠物")
+        self.status_label.setObjectName("statusBar")
         self.status_label.setWordWrap(True)
-        root.addWidget(self.status_label)
-
         quit_button = QPushButton("退出程序")
         quit_button.setObjectName("dangerButton")
         quit_button.clicked.connect(self.quit_requested.emit)
-        root.addWidget(quit_button)
+        footer.addWidget(self.status_label, 1)
+        footer.addWidget(quit_button, 0)
+        root.addLayout(footer)
 
-    def _build_header(self) -> QWidget:
-        header = QFrame()
-        header.setObjectName("headerCard")
-        layout = QVBoxLayout(header)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(4)
+    def _build_title_bar(self) -> QWidget:
+        bar = QFrame()
+        bar.setObjectName("titleBar")
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(14, 8, 14, 8)
 
-        title = QLabel("桌面宠物控制台")
-        title.setObjectName("titleLabel")
-        subtitle = QLabel("上传素材、调整大小，或者让宠物陪你说两句。")
-        subtitle.setObjectName("subtitleLabel")
+        dots = QLabel("●  ●  ●")
+        dots.setObjectName("trafficDots")
+        title = QLabel("桌面宠物控制面板")
+        title.setObjectName("windowTitle")
+        layout.addWidget(dots, 0)
+        layout.addWidget(title, 1)
+        return bar
+
+    def _build_left_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setObjectName("leftPanel")
+        panel.setFixedWidth(286)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
+
+        title = QLabel("素材库")
+        title.setObjectName("sectionTitle")
         layout.addWidget(title)
-        layout.addWidget(subtitle)
-        return header
 
-    def _build_material_group(self) -> QGroupBox:
-        group = self._card("素材")
-        layout = QGridLayout(group)
-        layout.setContentsMargins(14, 22, 14, 14)
-        layout.setSpacing(10)
+        self.current_material_card = self._build_material_card(
+            title="当前素材",
+            subtitle=self.current_material,
+            tag="已绑定：宠物窗口",
+            primary_label="上传 MP4",
+            secondary_label="恢复默认",
+            primary_callback=self._choose_video,
+            secondary_callback=self._reset_video,
+        )
+        layout.addWidget(self.current_material_card)
 
-        upload_button = QPushButton("上传 MP4")
-        upload_button.setObjectName("primaryButton")
-        reset_button = QPushButton("恢复默认")
-        upload_button.clicked.connect(self._choose_video)
-        reset_button.clicked.connect(self._reset_video)
-        layout.addWidget(upload_button, 0, 0)
-        layout.addWidget(reset_button, 0, 1)
-        return group
+        default_card = self._build_material_card(
+            title="默认宠物",
+            subtitle="内置绘制素材",
+            tag="备用素材",
+            primary_label="切换",
+            secondary_label="显示宠物",
+            primary_callback=self._reset_video,
+            secondary_callback=lambda: self.state_requested.emit("show"),
+        )
+        layout.addWidget(default_card)
 
-    def _build_transparency_group(self) -> QGroupBox:
-        group = self._card("透明设置")
-        layout = QGridLayout(group)
-        layout.setContentsMargins(14, 22, 14, 14)
-        layout.setSpacing(10)
+        hint = QLabel("上传透明 MP4 时会优先读取 Alpha；没有 Alpha 时使用背景色和容差透明化。")
+        hint.setObjectName("hintText")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        layout.addStretch(1)
+        return panel
 
-        green_button = QPushButton("绿色")
-        white_button = QPushButton("白色")
-        black_button = QPushButton("黑色")
-        custom_button = QPushButton("自定义")
-        green_button.setProperty("tone", "green")
-        white_button.setProperty("tone", "light")
-        black_button.setProperty("tone", "dark")
-        custom_button.setObjectName("secondaryButton")
+    def _build_material_card(
+        self,
+        title: str,
+        subtitle: str,
+        tag: str,
+        primary_label: str,
+        secondary_label: str,
+        primary_callback,
+        secondary_callback,
+    ) -> QWidget:
+        card = QFrame()
+        card.setObjectName("materialCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
 
-        green_button.clicked.connect(lambda: self._set_background_color((0, 255, 0)))
-        white_button.clicked.connect(lambda: self._set_background_color((255, 255, 255)))
-        black_button.clicked.connect(lambda: self._set_background_color((0, 0, 0)))
-        custom_button.clicked.connect(self._choose_color)
+        header = QHBoxLayout()
+        thumb = QLabel("MP4")
+        thumb.setObjectName("thumbBadge")
+        text_box = QVBoxLayout()
+        name = QLabel(title)
+        name.setObjectName("materialTitle")
+        detail = QLabel(subtitle)
+        detail.setObjectName("materialSubtitle")
+        detail.setWordWrap(True)
+        text_box.addWidget(name)
+        text_box.addWidget(detail)
+        header.addWidget(thumb, 0)
+        header.addLayout(text_box, 1)
+        layout.addLayout(header)
 
-        self.tolerance_slider = QSlider(Qt.Horizontal)
-        self.tolerance_slider.setRange(0, 120)
-        self.tolerance_slider.setValue(35)
-        self.tolerance_label = QLabel("容差：35")
-        self.tolerance_label.setObjectName("valueLabel")
-        self.tolerance_slider.valueChanged.connect(lambda value: self.tolerance_label.setText(f"容差：{value}"))
+        status = QLabel(tag)
+        status.setObjectName("boundTag")
+        layout.addWidget(status, 0, Qt.AlignLeft)
 
-        layout.addWidget(green_button, 0, 0)
-        layout.addWidget(white_button, 0, 1)
-        layout.addWidget(black_button, 0, 2)
-        layout.addWidget(custom_button, 0, 3)
-        layout.addWidget(self.tolerance_label, 1, 0)
-        layout.addWidget(self.tolerance_slider, 1, 1, 1, 3)
-        return group
+        buttons = QHBoxLayout()
+        buttons.setSpacing(8)
+        primary = QPushButton(primary_label)
+        primary.setObjectName("orangeButton")
+        secondary = QPushButton(secondary_label)
+        secondary.setObjectName("lightButton")
+        primary.clicked.connect(primary_callback)
+        secondary.clicked.connect(secondary_callback)
+        buttons.addWidget(primary)
+        buttons.addWidget(secondary)
+        layout.addLayout(buttons)
+        return card
 
-    def _build_size_group(self) -> QGroupBox:
-        group = self._card("大小")
-        layout = QGridLayout(group)
-        layout.setContentsMargins(14, 22, 14, 14)
-        layout.setSpacing(10)
+    def _build_right_panel(self) -> QWidget:
+        panel = QFrame()
+        panel.setObjectName("rightPanel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(14)
 
-        self.scale_label = QLabel("大小：100%")
-        self.scale_label.setObjectName("valueLabel")
+        top = QHBoxLayout()
+        top.setSpacing(16)
+        top.addWidget(self._build_preview_card(), 1)
+        top.addWidget(self._build_settings_card(), 1)
+        layout.addLayout(top, 1)
+        layout.addWidget(self._build_action_card(), 0)
+        layout.addWidget(self._build_dialogue_card(), 0)
+        return panel
+
+    def _build_preview_card(self) -> QWidget:
+        card = QFrame()
+        card.setObjectName("previewCard")
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        title = QLabel("宠物预览")
+        title.setObjectName("sectionTitle")
+        preview = QLabel("宠物窗口实时显示")
+        preview.setObjectName("previewBox")
+        preview.setAlignment(Qt.AlignCenter)
+        save_button = QPushButton("保存并同步")
+        save_button.setObjectName("orangeButton")
+        save_button.clicked.connect(lambda: self.status_label.setText("状态：设置已同步到宠物窗口"))
+        layout.addWidget(title)
+        layout.addWidget(preview, 1)
+        layout.addWidget(save_button, 0, Qt.AlignRight)
+        return card
+
+    def _build_settings_card(self) -> QWidget:
+        card = QFrame()
+        card.setObjectName("settingsCard")
+        layout = QGridLayout(card)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setHorizontalSpacing(12)
+        layout.setVerticalSpacing(16)
+
+        size_title = QLabel("宠物大小")
+        size_title.setObjectName("fieldLabel")
+        self.scale_label = QLabel("100")
+        self.scale_label.setObjectName("metricValue")
         self.scale_slider = QSlider(Qt.Horizontal)
         self.scale_slider.setRange(50, 250)
         self.scale_slider.setValue(100)
         self.scale_slider.valueChanged.connect(self._emit_scale)
-        layout.addWidget(self.scale_label, 0, 0)
-        layout.addWidget(self.scale_slider, 0, 1)
-        return group
 
-    def _build_action_group(self) -> QGroupBox:
-        group = self._card("动作")
-        layout = QGridLayout(group)
-        layout.setContentsMargins(14, 22, 14, 14)
+        tolerance_title = QLabel("透明容差")
+        tolerance_title.setObjectName("fieldLabel")
+        self.tolerance_label = QLabel("35")
+        self.tolerance_label.setObjectName("metricValue")
+        self.tolerance_slider = QSlider(Qt.Horizontal)
+        self.tolerance_slider.setRange(0, 120)
+        self.tolerance_slider.setValue(35)
+        self.tolerance_slider.valueChanged.connect(lambda value: self.tolerance_label.setText(str(value)))
+
+        layout.addWidget(size_title, 0, 0)
+        layout.addWidget(self.scale_slider, 0, 1)
+        layout.addWidget(self.scale_label, 0, 2)
+        layout.addWidget(tolerance_title, 1, 0)
+        layout.addWidget(self.tolerance_slider, 1, 1)
+        layout.addWidget(self.tolerance_label, 1, 2)
+        layout.addWidget(self._build_color_row(), 2, 0, 1, 3)
+        return card
+
+    def _build_color_row(self) -> QWidget:
+        row = QFrame()
+        row.setObjectName("inlinePanel")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+        label = QLabel("背景色")
+        label.setObjectName("fieldLabel")
+        buttons = [
+            ("绿", (0, 255, 0), "greenButton"),
+            ("白", (255, 255, 255), "lightButton"),
+            ("黑", (0, 0, 0), "darkButton"),
+        ]
+        layout.addWidget(label)
+        for text, color, object_name in buttons:
+            button = QPushButton(text)
+            button.setObjectName(object_name)
+            button.clicked.connect(lambda _checked=False, value=color: self._set_background_color(value))
+            layout.addWidget(button)
+        custom = QPushButton("自定义")
+        custom.setObjectName("lightButton")
+        custom.clicked.connect(self._choose_color)
+        layout.addWidget(custom)
+        layout.addStretch(1)
+        return row
+
+    def _build_action_card(self) -> QWidget:
+        card = QFrame()
+        card.setObjectName("settingsCard")
+        layout = QGridLayout(card)
+        layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
         actions = [
-            ("待机", "idle", "soft"),
-            ("开心", "happy", "warm"),
-            ("睡觉", "sleep", "cool"),
-            ("走动", "walk", "green"),
-            ("隐藏", "hide", "muted"),
-            ("显示", "show", "primary"),
+            ("待机", "idle", "lightButton"),
+            ("开心", "happy", "orangeButton"),
+            ("睡觉", "sleep", "lightButton"),
+            ("走动", "walk", "lightButton"),
+            ("隐藏", "hide", "darkButton"),
+            ("显示", "show", "orangeButton"),
         ]
-        for index, (label, state, tone) in enumerate(actions):
+        for index, (label, state, object_name) in enumerate(actions):
             button = QPushButton(label)
-            button.setProperty("tone", tone)
+            button.setObjectName(object_name)
             button.clicked.connect(lambda _checked=False, value=state: self.state_requested.emit(value))
             layout.addWidget(button, index // 3, index % 3)
-        return group
+        return card
 
-    def _build_dialogue_group(self) -> QGroupBox:
-        group = self._card("对话")
-        layout = QGridLayout(group)
-        layout.setContentsMargins(14, 22, 14, 14)
+    def _build_dialogue_card(self) -> QWidget:
+        card = QFrame()
+        card.setObjectName("settingsCard")
+        layout = QGridLayout(card)
+        layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
         self.text_input = QLineEdit()
         self.text_input.setPlaceholderText("输入要说的话或聊天内容")
         say_button = QPushButton("说话")
+        say_button.setObjectName("orangeButton")
         chat_button = QPushButton("聊天")
-        say_button.setObjectName("primaryButton")
-        chat_button.setObjectName("secondaryButton")
+        chat_button.setObjectName("lightButton")
         say_button.clicked.connect(lambda: self.say_requested.emit(self.text_input.text().strip()))
         chat_button.clicked.connect(lambda: self.chat_requested.emit(self.text_input.text().strip()))
 
-        button_row = QHBoxLayout()
-        button_row.setSpacing(10)
-        button_row.addWidget(say_button)
-        button_row.addWidget(chat_button)
-
-        layout.addWidget(self.text_input, 0, 0)
-        layout.addLayout(button_row, 1, 0)
-        return group
-
-    def _card(self, title: str) -> QGroupBox:
-        group = QGroupBox(title)
-        group.setObjectName("card")
-        return group
+        layout.addWidget(self.text_input, 0, 0, 1, 2)
+        layout.addWidget(say_button, 1, 0)
+        layout.addWidget(chat_button, 1, 1)
+        return card
 
     def _choose_video(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "选择 MP4 素材", "", "MP4 视频 (*.mp4)")
         if not path:
             return
+        self.current_material = Path(path).name
+        self.status_label.setText(f"状态：已选择 {self.current_material}")
         self.video_requested.emit(path, self.background_color, self.tolerance_slider.value())
 
     def _reset_video(self) -> None:
-        self.status_label.setText("当前素材：内置绘制宠物")
+        self.current_material = "内置绘制宠物"
+        self.status_label.setText("状态：使用内置绘制宠物")
         self.reset_video_requested.emit()
 
     def _set_background_color(self, color: tuple) -> None:
         self.background_color = color
+        self.status_label.setText(f"状态：背景色已设置为 RGB{color}")
 
     def _choose_color(self) -> None:
         color = QColorDialog.getColor(QColor(*self.background_color), self, "选择背景色")
         if color.isValid():
-            self.background_color = (color.red(), color.green(), color.blue())
+            self._set_background_color((color.red(), color.green(), color.blue()))
 
     def _emit_scale(self, value: int) -> None:
-        self.scale_label.setText(f"大小：{value}%")
+        self.scale_label.setText(str(value))
         self.scale_requested.emit(value / 100)
 
     def set_status(self, text: str) -> None:
-        self.status_label.setText(text)
+        self.status_label.setText(f"状态：{text}")
 
     def _apply_style(self) -> None:
         self.setStyleSheet(
             """
             QWidget#controlPanel {
-                background: #fff7fb;
-                color: #3b3140;
+                background: #101114;
+                color: #f4f4f2;
                 font-family: "Microsoft YaHei", "Segoe UI";
                 font-size: 13px;
             }
 
-            QFrame#headerCard {
-                background: #ffe8f1;
-                border: 1px solid #ffd0df;
-                border-radius: 12px;
+            QFrame#titleBar {
+                background: #f1eeee;
+                border-radius: 14px;
             }
 
-            QLabel#titleLabel {
-                color: #35283b;
-                font-size: 20px;
+            QLabel#trafficDots {
+                color: #f15b48;
+                font-size: 12px;
+                letter-spacing: 2px;
+            }
+
+            QLabel#windowTitle {
+                color: #222222;
                 font-weight: 700;
             }
 
-            QLabel#subtitleLabel {
-                color: #7b687f;
+            QFrame#leftPanel,
+            QFrame#rightPanel {
+                background: #15171b;
+                border: 1px solid #25282f;
+                border-radius: 14px;
+            }
+
+            QLabel#sectionTitle {
+                color: #ffffff;
+                font-size: 15px;
+                font-weight: 800;
+            }
+
+            QFrame#materialCard,
+            QFrame#settingsCard,
+            QFrame#previewCard {
+                background: #1d2026;
+                border: 1px solid #2a2d35;
+                border-radius: 12px;
+            }
+
+            QLabel#thumbBadge {
+                background: #2a2d35;
+                border: 1px solid #393d48;
+                border-radius: 10px;
+                color: #f4f4f2;
+                font-weight: 800;
+                min-width: 44px;
+                min-height: 44px;
+                qproperty-alignment: AlignCenter;
+            }
+
+            QLabel#materialTitle {
+                color: #ffffff;
+                font-weight: 800;
+            }
+
+            QLabel#materialSubtitle,
+            QLabel#hintText {
+                color: #a9adb8;
                 font-size: 12px;
             }
 
-            QGroupBox#card {
-                background: #ffffff;
-                border: 1px solid #f0dbe6;
-                border-radius: 12px;
-                margin-top: 10px;
+            QLabel#boundTag {
+                background: #18493a;
+                border-radius: 7px;
+                color: #52e3ad;
+                font-size: 12px;
+                font-weight: 800;
+                padding: 4px 8px;
+            }
+
+            QLabel#previewBox {
+                background: #111216;
+                border: 1px dashed #333846;
+                border-radius: 14px;
+                color: #878d9b;
+                font-size: 14px;
+                min-height: 132px;
+            }
+
+            QLabel#fieldLabel {
+                color: #dfe2e8;
                 font-weight: 700;
-                color: #5d4565;
+                min-width: 66px;
             }
 
-            QGroupBox#card::title {
-                subcontrol-origin: margin;
-                left: 14px;
-                padding: 0 6px;
-                color: #8f5f78;
+            QLabel#metricValue {
+                color: #f4f4f2;
+                font-weight: 800;
+                min-width: 42px;
             }
 
-            QLabel#valueLabel {
-                color: #5d4565;
-                font-weight: 700;
-                min-width: 72px;
-            }
-
-            QLabel#statusLabel {
-                background: #fffdf7;
-                border: 1px solid #f1deba;
-                border-radius: 10px;
-                color: #6a5b3c;
+            QLabel#statusBar {
+                background: #171a20;
+                border: 1px solid #2b303a;
+                border-radius: 11px;
+                color: #cdd2dc;
                 padding: 10px 12px;
             }
 
             QLineEdit {
-                background: #fffafd;
-                border: 1px solid #efd7e4;
-                border-radius: 10px;
-                padding: 9px 11px;
-                selection-background-color: #ffb8d0;
+                background: #111216;
+                border: 1px solid #323743;
+                border-radius: 9px;
+                color: #f4f4f2;
+                padding: 10px 12px;
+                selection-background-color: #ff7533;
             }
 
             QLineEdit:focus {
-                border: 1px solid #ec7ca5;
-                background: #ffffff;
+                border: 1px solid #ff7a38;
             }
 
             QPushButton {
-                background: #f4f2fb;
-                border: 1px solid #ddd7f2;
-                border-radius: 10px;
-                color: #473b57;
-                font-weight: 600;
-                padding: 9px 12px;
+                background: #ececec;
+                border: 1px solid #ffffff;
+                border-radius: 8px;
+                color: #171717;
+                font-weight: 800;
+                padding: 8px 12px;
                 min-height: 18px;
             }
 
             QPushButton:hover {
-                background: #eee9fb;
-            }
-
-            QPushButton:pressed {
-                background: #e1d8f6;
-            }
-
-            QPushButton#primaryButton,
-            QPushButton[tone="primary"] {
-                background: #ff8fb8;
-                border-color: #f0719e;
-                color: #ffffff;
-            }
-
-            QPushButton#primaryButton:hover,
-            QPushButton[tone="primary"]:hover {
-                background: #ff7aaa;
-            }
-
-            QPushButton#secondaryButton,
-            QPushButton[tone="cool"] {
-                background: #eaf3ff;
-                border-color: #cfe3fb;
-                color: #376083;
-            }
-
-            QPushButton[tone="warm"] {
-                background: #fff0cc;
-                border-color: #f3d681;
-                color: #7a5a1f;
-            }
-
-            QPushButton[tone="green"] {
-                background: #e7f8e9;
-                border-color: #bfe8c5;
-                color: #356c42;
-            }
-
-            QPushButton[tone="soft"] {
-                background: #fff4fa;
-                border-color: #f4d3e5;
-                color: #7a4c68;
-            }
-
-            QPushButton[tone="muted"] {
-                background: #f1f1f3;
-                border-color: #d9d9df;
-                color: #5c5c66;
-            }
-
-            QPushButton[tone="light"] {
                 background: #ffffff;
-                border-color: #dddddd;
-                color: #555555;
             }
 
-            QPushButton[tone="dark"] {
-                background: #47434d;
-                border-color: #36323c;
-                color: #ffffff;
+            QPushButton#orangeButton {
+                background: #ff7432;
+                border-color: #ff9a68;
+                color: #111111;
+            }
+
+            QPushButton#orangeButton:hover {
+                background: #ff8a50;
+            }
+
+            QPushButton#lightButton {
+                background: #f2f2f2;
+                color: #171717;
+            }
+
+            QPushButton#darkButton {
+                background: #2b2f38;
+                border-color: #3c414d;
+                color: #f4f4f2;
+            }
+
+            QPushButton#greenButton {
+                background: #dff8e9;
+                border-color: #b7e8c8;
+                color: #12623b;
             }
 
             QPushButton#dangerButton {
-                background: #fff0f0;
-                border-color: #f0c5c5;
-                color: #9b3d3d;
+                background: #351a1a;
+                border-color: #6b2d2d;
+                color: #ffb0a3;
             }
 
             QPushButton#dangerButton:hover {
-                background: #ffe3e3;
+                background: #4a2222;
             }
 
             QSlider::groove:horizontal {
-                background: #f2e5ef;
+                background: #343943;
                 border-radius: 4px;
                 height: 8px;
             }
 
             QSlider::sub-page:horizontal {
-                background: #ff9fc1;
+                background: #34d1a0;
                 border-radius: 4px;
             }
 
             QSlider::handle:horizontal {
-                background: #ffffff;
-                border: 2px solid #ff8fb8;
+                background: #34d1a0;
+                border: 1px solid #55ecc0;
                 border-radius: 8px;
                 width: 16px;
                 margin: -5px 0;
