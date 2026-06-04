@@ -45,23 +45,23 @@ class ControlPanelWindow(QWidget):
         self.state_material_labels = {}
         self.state_status_labels = {}
         self.setWindowTitle("桌面宠物控制面板")
-        self.setMinimumSize(1000, 680)
+        self.setMinimumSize(1180, 780)
         self.setObjectName("controlPanel")
         self._apply_style()
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 24, 24, 24)
-        root.setSpacing(16)
+        root.setContentsMargins(28, 28, 28, 28)
+        root.setSpacing(18)
         root.addWidget(self._build_title_bar())
 
         content = QHBoxLayout()
-        content.setSpacing(18)
+        content.setSpacing(22)
         content.addWidget(self._build_left_panel(), 0)
         content.addWidget(self._build_right_panel(), 1)
         root.addLayout(content, 1)
 
         footer = QHBoxLayout()
-        footer.setSpacing(12)
+        footer.setSpacing(14)
         self.status_label = QLabel("状态：使用内置绘制宠物")
         self.status_label.setObjectName("statusBar")
         self.status_label.setWordWrap(True)
@@ -76,7 +76,7 @@ class ControlPanelWindow(QWidget):
         bar = QFrame()
         bar.setObjectName("titleBar")
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(18, 10, 18, 10)
+        layout.setContentsMargins(22, 12, 22, 12)
 
         dots = QLabel("●  ●  ●")
         dots.setObjectName("trafficDots")
@@ -89,10 +89,10 @@ class ControlPanelWindow(QWidget):
     def _build_left_panel(self) -> QWidget:
         panel = QFrame()
         panel.setObjectName("leftPanel")
-        panel.setFixedWidth(380)
+        panel.setFixedWidth(440)
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(16, 16, 16, 16)
-        layout.setSpacing(14)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(16)
 
         title = QLabel("素材库")
         title.setObjectName("sectionTitle")
@@ -112,7 +112,7 @@ class ControlPanelWindow(QWidget):
         content.setObjectName("materialScrollContent")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(12)
+        content_layout.setSpacing(14)
         for state, title, subtitle in STATE_MATERIALS:
             content_layout.addWidget(self._build_state_material_card(state, title, subtitle))
         content_layout.addStretch(1)
@@ -124,8 +124,8 @@ class ControlPanelWindow(QWidget):
         card = QFrame()
         card.setObjectName("materialCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
 
         header = QHBoxLayout()
         thumb = QLabel("MP4")
@@ -150,7 +150,7 @@ class ControlPanelWindow(QWidget):
         self.state_status_labels[state] = status
 
         buttons = QGridLayout()
-        buttons.setSpacing(8)
+        buttons.setSpacing(10)
         upload = QPushButton("上传 MP4")
         upload.setObjectName("orangeButton")
         switch = QPushButton("切换动作")
@@ -179,8 +179,8 @@ class ControlPanelWindow(QWidget):
         card = QFrame()
         card.setObjectName("materialCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
 
         header = QHBoxLayout()
         thumb = QLabel("MP4")
@@ -202,7 +202,7 @@ class ControlPanelWindow(QWidget):
         layout.addWidget(status, 0, Qt.AlignLeft)
 
         buttons = QHBoxLayout()
-        buttons.setSpacing(10)
+        buttons.setSpacing(12)
         primary = QPushButton(primary_label)
         primary.setObjectName("orangeButton")
         secondary = QPushButton(secondary_label)
@@ -218,11 +218,11 @@ class ControlPanelWindow(QWidget):
         panel = QFrame()
         panel.setObjectName("rightPanel")
         layout = QVBoxLayout(panel)
-        layout.setContentsMargins(22, 22, 22, 22)
-        layout.setSpacing(16)
+        layout.setContentsMargins(26, 26, 26, 26)
+        layout.setSpacing(18)
 
         top = QHBoxLayout()
-        top.setSpacing(18)
+        top.setSpacing(22)
         top.addWidget(self._build_preview_card(), 1)
         top.addWidget(self._build_settings_card(), 1)
         layout.addLayout(top, 1)
@@ -234,15 +234,15 @@ class ControlPanelWindow(QWidget):
         card = QFrame()
         card.setObjectName("previewCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(14)
+        layout.setContentsMargins(22, 22, 22, 22)
+        layout.setSpacing(16)
 
         title = QLabel("宠物预览")
         title.setObjectName("sectionTitle")
         preview = QLabel("宠物窗口实时显示")
         preview.setObjectName("previewBox")
         preview.setAlignment(Qt.AlignCenter)
-        preview.setMinimumHeight(190)
+        preview.setMinimumHeight(240)
         save_button = QPushButton("保存并同步")
         save_button.setObjectName("orangeButton")
         save_button.clicked.connect(lambda: self.status_label.setText("状态：设置已同步到宠物窗口"))
@@ -255,9 +255,9 @@ class ControlPanelWindow(QWidget):
         card = QFrame()
         card.setObjectName("settingsCard")
         layout = QGridLayout(card)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setHorizontalSpacing(14)
-        layout.setVerticalSpacing(18)
+        layout.setContentsMargins(22, 22, 22, 22)
+        layout.setHorizontalSpacing(18)
+        layout.setVerticalSpacing(22)
 
         size_title = QLabel("宠物大小")
         size_title.setObjectName("fieldLabel")
@@ -291,7 +291,7 @@ class ControlPanelWindow(QWidget):
         row.setObjectName("inlinePanel")
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
         label = QLabel("背景色")
         label.setObjectName("fieldLabel")
         buttons = [
@@ -316,8 +316,8 @@ class ControlPanelWindow(QWidget):
         card = QFrame()
         card.setObjectName("settingsCard")
         layout = QGridLayout(card)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
+        layout.setContentsMargins(22, 22, 22, 22)
+        layout.setSpacing(14)
 
         actions = [
             ("待机", "idle", "lightButton"),
@@ -339,8 +339,8 @@ class ControlPanelWindow(QWidget):
         card = QFrame()
         card.setObjectName("settingsCard")
         layout = QGridLayout(card)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(12)
+        layout.setContentsMargins(22, 22, 22, 22)
+        layout.setSpacing(14)
 
         self.text_input = QLineEdit()
         self.text_input.setPlaceholderText("输入要说的话或聊天内容")
@@ -416,7 +416,7 @@ class ControlPanelWindow(QWidget):
                 background: #101114;
                 color: #f4f4f2;
                 font-family: "Microsoft YaHei", "Segoe UI";
-                font-size: 14px;
+                font-size: 15px;
             }
 
             QFrame#titleBar {
@@ -426,7 +426,7 @@ class ControlPanelWindow(QWidget):
 
             QLabel#trafficDots {
                 color: #f15b48;
-                font-size: 13px;
+                font-size: 14px;
                 letter-spacing: 2px;
             }
 
@@ -464,7 +464,7 @@ class ControlPanelWindow(QWidget):
 
             QLabel#sectionTitle {
                 color: #ffffff;
-                font-size: 17px;
+                font-size: 19px;
                 font-weight: 800;
             }
 
@@ -482,8 +482,8 @@ class ControlPanelWindow(QWidget):
                 border-radius: 10px;
                 color: #f4f4f2;
                 font-weight: 800;
-                min-width: 54px;
-                min-height: 54px;
+                min-width: 62px;
+                min-height: 62px;
                 qproperty-alignment: AlignCenter;
             }
 
@@ -495,16 +495,16 @@ class ControlPanelWindow(QWidget):
             QLabel#materialSubtitle,
             QLabel#hintText {
                 color: #a9adb8;
-                font-size: 13px;
+                font-size: 14px;
             }
 
             QLabel#boundTag {
                 background: #18493a;
                 border-radius: 7px;
                 color: #52e3ad;
-                font-size: 13px;
+                font-size: 14px;
                 font-weight: 800;
-                padding: 5px 10px;
+                padding: 6px 12px;
             }
 
             QLabel#previewBox {
@@ -512,20 +512,20 @@ class ControlPanelWindow(QWidget):
                 border: 1px dashed #333846;
                 border-radius: 14px;
                 color: #878d9b;
-                font-size: 16px;
-                min-height: 190px;
+                font-size: 17px;
+                min-height: 240px;
             }
 
             QLabel#fieldLabel {
                 color: #dfe2e8;
                 font-weight: 700;
-                min-width: 76px;
+                min-width: 88px;
             }
 
             QLabel#metricValue {
                 color: #f4f4f2;
                 font-weight: 800;
-                min-width: 50px;
+                min-width: 58px;
             }
 
             QLabel#statusBar {
@@ -533,7 +533,7 @@ class ControlPanelWindow(QWidget):
                 border: 1px solid #2b303a;
                 border-radius: 11px;
                 color: #cdd2dc;
-                padding: 12px 14px;
+                padding: 14px 16px;
             }
 
             QLineEdit {
@@ -541,7 +541,7 @@ class ControlPanelWindow(QWidget):
                 border: 1px solid #323743;
                 border-radius: 9px;
                 color: #f4f4f2;
-                padding: 12px 14px;
+                padding: 14px 16px;
                 selection-background-color: #ff7533;
             }
 
@@ -555,8 +555,8 @@ class ControlPanelWindow(QWidget):
                 border-radius: 8px;
                 color: #171717;
                 font-weight: 800;
-                padding: 10px 16px;
-                min-height: 24px;
+                padding: 12px 20px;
+                min-height: 30px;
             }
 
             QPushButton:hover {
@@ -602,21 +602,21 @@ class ControlPanelWindow(QWidget):
 
             QSlider::groove:horizontal {
                 background: #343943;
-                border-radius: 5px;
-                height: 10px;
+                border-radius: 6px;
+                height: 12px;
             }
 
             QSlider::sub-page:horizontal {
                 background: #34d1a0;
-                border-radius: 5px;
+                border-radius: 6px;
             }
 
             QSlider::handle:horizontal {
                 background: #34d1a0;
                 border: 1px solid #55ecc0;
-                border-radius: 10px;
-                width: 20px;
-                margin: -6px 0;
+                border-radius: 11px;
+                width: 22px;
+                margin: -7px 0;
             }
             """
         )
