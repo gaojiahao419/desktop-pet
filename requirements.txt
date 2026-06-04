@@ -1,3 +1,6 @@
 PyQt5
 Pillow
 pytest
+imageio
+imageio-ffmpeg
+numpy
