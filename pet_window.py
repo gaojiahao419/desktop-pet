@@ -1,10 +1,12 @@
 from PyQt5.QtCore import QPoint, Qt, QTimer
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QAction, QLabel, QMenu, QVBoxLayout, QWidget
+from PIL import Image
 
 from dialogue import LocalDialogue
 from pet_animator import PetAnimator
 from pet_renderer import PetRenderer
+from video_pet_source import VideoPetSource, clamp_scale
 
 
 class PetWindow(QWidget):
@@ -13,16 +15,18 @@ class PetWindow(QWidget):
         self.animator = animator
         self.dialogue = dialogue
         self.renderer = PetRenderer()
+        self.video_source = None
+        self.scale = 1.0
+        self.base_size = 220
         self.image_label = QLabel(self)
         self.image_label.setAttribute(Qt.WA_TranslucentBackground, True)
         self.image_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.image_label.setFixedSize(220, 220)
         self.drag_start = QPoint()
         self.dragging = False
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
-        self.setFixedSize(220, 220)
+        self._apply_scaled_size()
         self.move(1200, 620)
 
         layout = QVBoxLayout(self)
@@ -36,7 +40,11 @@ class PetWindow(QWidget):
 
     def refresh_frame(self) -> None:
         frame = self.animator.advance()
-        image = self.renderer.render(frame, self.animator.speech_text)
+        if self.video_source is not None:
+            image = self.video_source.next_frame()
+        else:
+            image = self.renderer.render(frame, self.animator.speech_text)
+        image = self._resize_image(image)
         qimage = self._pil_to_qimage(image)
         self.image_label.setPixmap(QPixmap.fromImage(qimage))
 
@@ -48,6 +56,21 @@ class PetWindow(QWidget):
     def set_state(self, state: str) -> None:
         self.animator.set_state(state)
         self.show_pet()
+
+    def set_video_source(self, source: VideoPetSource) -> None:
+        self.video_source = source
+        self.show_pet()
+
+    def clear_video_source(self) -> None:
+        self.video_source = None
+        self.show_pet()
+
+    def set_scale(self, scale: float) -> None:
+        old_pos = self.pos()
+        self.scale = clamp_scale(scale)
+        self._apply_scaled_size()
+        self.move(old_pos)
+        self.refresh_frame()
 
     def say(self, text: str) -> None:
         self.animator.say(text)
@@ -106,6 +129,15 @@ class PetWindow(QWidget):
         reply = self.dialogue.reply_for_menu(action, self.animator.state)
         print(f"宠物: {reply}")
         self.say(reply)
+
+    def _apply_scaled_size(self) -> None:
+        display_size = int(self.base_size * self.scale)
+        self.setFixedSize(display_size, display_size)
+        self.image_label.setFixedSize(display_size, display_size)
+
+    def _resize_image(self, image: Image.Image) -> Image.Image:
+        display_size = int(self.base_size * self.scale)
+        return image.convert("RGBA").resize((display_size, display_size), Image.LANCZOS)
 
     def _pil_to_qimage(self, image) -> QImage:
         rgba = image.convert("RGBA")
