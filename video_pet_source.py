@@ -148,11 +148,26 @@ def filter_outlier_frames(frames: Sequence[Image.Image]) -> List[Image.Image]:
     return filtered or list(frames)
 
 
+def crop_frames_to_content(frames: Sequence[Image.Image]) -> List[Image.Image]:
+    boxes = [frame.convert("RGBA").getbbox() for frame in frames]
+    boxes = [box for box in boxes if box is not None]
+    if not boxes:
+        return [frame.convert("RGBA") for frame in frames]
+
+    left = min(box[0] for box in boxes)
+    top = min(box[1] for box in boxes)
+    right = max(box[2] for box in boxes)
+    bottom = max(box[3] for box in boxes)
+    crop_box = (left, top, right, bottom)
+    return [frame.convert("RGBA").crop(crop_box) for frame in frames]
+
+
 class VideoPetSource:
     def __init__(self, frames: Sequence[Image.Image], source_path: str = "") -> None:
         if not frames:
             raise ValueError("Video source requires at least one frame")
         self.frames: List[Image.Image] = [frame.convert("RGBA") for frame in frames]
+        self.size = self.frames[0].size
         self.source_path = source_path
         self.index = 0
 
@@ -180,6 +195,7 @@ class VideoPetSource:
         if not frames:
             raise ValueError("无法读取视频帧")
         frames = filter_outlier_frames(frames)
+        frames = crop_frames_to_content(frames)
         return cls(frames, source_path=str(video_path))
 
     @classmethod
@@ -190,7 +206,7 @@ class VideoPetSource:
         tolerance: int = 35,
     ) -> "VideoPetSource":
         images = [frame_to_rgba_image(frame, background_color, tolerance) for frame in frames]
-        return cls(images)
+        return cls(crop_frames_to_content(images))
 
     def next_frame(self) -> Image.Image:
         frame = self.frames[self.next_frame_index()]

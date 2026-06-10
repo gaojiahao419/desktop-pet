@@ -13,6 +13,12 @@ def select_video_source_for_state(state: str, state_sources: dict, default_sourc
     return state_sources.get(state) or default_source
 
 
+def scaled_dimensions(size: tuple, scale: float) -> tuple:
+    width, height = size
+    scale = clamp_scale(scale)
+    return max(1, int(width * scale)), max(1, int(height * scale))
+
+
 class PetWindow(QWidget):
     def __init__(self, animator: PetAnimator, dialogue: LocalDialogue) -> None:
         super().__init__()
@@ -48,8 +54,10 @@ class PetWindow(QWidget):
         frame = self.animator.advance()
         video_source = select_video_source_for_state(frame.state, self.state_video_sources, self.video_source)
         if video_source is not None:
+            self._apply_scaled_size(video_source.size)
             pixmap = self._next_video_pixmap(video_source)
         else:
+            self._apply_scaled_size()
             image = self.renderer.render(frame, self.animator.speech_text)
             image = self._resize_image(image)
             qimage = self._pil_to_qimage(image)
@@ -90,7 +98,7 @@ class PetWindow(QWidget):
     def set_scale(self, scale: float) -> None:
         old_pos = self.pos()
         self.scale = clamp_scale(scale)
-        self._apply_scaled_size()
+        self._apply_scaled_size(self._current_video_size())
         self._pixmap_cache.clear()
         self.move(old_pos)
         self.refresh_frame()
@@ -153,17 +161,23 @@ class PetWindow(QWidget):
         print(f"宠物: {reply}")
         self.say(reply)
 
-    def _apply_scaled_size(self) -> None:
-        display_size = int(self.base_size * self.scale)
-        self.setFixedSize(display_size, display_size)
-        self.image_label.setFixedSize(display_size, display_size)
+    def _apply_scaled_size(self, source_size: tuple = None) -> None:
+        if source_size is None:
+            display_size = int(self.base_size * self.scale)
+            target_size = (display_size, display_size)
+        else:
+            target_size = scaled_dimensions(source_size, self.scale)
+        if self.size().width() == target_size[0] and self.size().height() == target_size[1]:
+            return
+        self.setFixedSize(*target_size)
+        self.image_label.setFixedSize(*target_size)
 
     def _resize_image(self, image: Image.Image) -> Image.Image:
         display_size = int(self.base_size * self.scale)
         return image.convert("RGBA").resize((display_size, display_size), Image.LANCZOS)
 
     def _next_video_pixmap(self, source: VideoPetSource) -> QPixmap:
-        display_size = int(self.base_size * self.scale)
+        display_size = scaled_dimensions(source.size, self.scale)
         cache_key = (id(source), display_size)
         if cache_key not in self._pixmap_cache:
             self._pixmap_cache[cache_key] = [
@@ -172,8 +186,12 @@ class PetWindow(QWidget):
             ]
         return self._pixmap_cache[cache_key][source.next_frame_index()]
 
-    def _resize_to_display(self, image: Image.Image, display_size: int) -> Image.Image:
-        return image.convert("RGBA").resize((display_size, display_size), Image.LANCZOS)
+    def _resize_to_display(self, image: Image.Image, display_size: tuple) -> Image.Image:
+        return image.convert("RGBA").resize(display_size, Image.LANCZOS)
+
+    def _current_video_size(self):
+        source = select_video_source_for_state(self.animator.state, self.state_video_sources, self.video_source)
+        return source.size if source is not None else None
 
     def _pil_to_qimage(self, image) -> QImage:
         rgba = image.convert("RGBA")

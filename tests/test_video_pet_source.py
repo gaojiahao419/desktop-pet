@@ -6,6 +6,7 @@ from video_pet_source import (
     HAS_SCIPY,
     VideoPetSource,
     clamp_scale,
+    crop_frames_to_content,
     detect_background_color,
     filter_outlier_frames,
     frame_to_rgba_image,
@@ -142,3 +143,16 @@ def test_filter_outlier_frames_removes_oversized_dirty_frames():
     frames = filter_outlier_frames([dirty, clean, clean, clean])
 
     assert frames == [clean, clean, clean]
+
+
+def test_crop_frames_to_content_uses_common_content_box():
+    first = Image.new("RGBA", (20, 20), (0, 0, 0, 0))
+    first.paste((255, 255, 255, 255), (5, 6, 12, 14))
+    second = Image.new("RGBA", (20, 20), (0, 0, 0, 0))
+    second.paste((255, 255, 255, 255), (8, 3, 16, 18))
+
+    cropped = crop_frames_to_content([first, second])
+
+    assert [frame.size for frame in cropped] == [(11, 15), (11, 15)]
+    assert cropped[0].getbbox() == (0, 3, 7, 11)
+    assert cropped[1].getbbox() == (3, 0, 11, 15)

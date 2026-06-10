@@ -30,3 +30,8 @@ def test_select_video_source_falls_back_to_default_source():
     )
 
     assert source is fallback
+
+
+def test_scaled_dimensions_preserve_video_aspect_ratio():
+    assert pet_window.scaled_dimensions((800, 600), 1.0) == (800, 600)
+    assert pet_window.scaled_dimensions((800, 600), 0.5) == (400, 300)
