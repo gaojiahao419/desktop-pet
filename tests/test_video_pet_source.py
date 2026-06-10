@@ -67,3 +67,15 @@ def test_video_source_loops_frames_from_arrays():
 
     assert first.getpixel((0, 0)) != second.getpixel((0, 0))
     assert third.getpixel((0, 0)) == first.getpixel((0, 0))
+
+
+def test_video_source_exposes_looping_frame_indexes():
+    frames = [
+        np.zeros((1, 1, 3), dtype=np.uint8),
+        np.full((1, 1, 3), 255, dtype=np.uint8),
+    ]
+    source = VideoPetSource.from_arrays(frames, background_color=(0, 255, 0), tolerance=35)
+
+    assert source.next_frame_index() == 0
+    assert source.next_frame_index() == 1
+    assert source.next_frame_index() == 0

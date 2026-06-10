@@ -35,6 +35,7 @@ class ControlPanelWindow(QWidget):
     state_video_requested = pyqtSignal(str, str, tuple, int)
     reset_state_video_requested = pyqtSignal(str)
     scale_requested = pyqtSignal(float)
+    settings_changed = pyqtSignal()
     quit_requested = pyqtSignal()
 
     def __init__(self) -> None:
@@ -276,6 +277,7 @@ class ControlPanelWindow(QWidget):
         self.tolerance_slider.setRange(0, 120)
         self.tolerance_slider.setValue(35)
         self.tolerance_slider.valueChanged.connect(lambda value: self.tolerance_label.setText(str(value)))
+        self.tolerance_slider.valueChanged.connect(lambda _value: self.settings_changed.emit())
 
         layout.addWidget(size_title, 0, 0)
         layout.addWidget(self.scale_slider, 0, 1)
@@ -368,11 +370,7 @@ class ControlPanelWindow(QWidget):
         path, _ = QFileDialog.getOpenFileName(self, "选择动作 MP4 素材", "", "MP4 视频 (*.mp4)")
         if not path:
             return
-        material_name = Path(path).name
-        self.state_material_names[state] = material_name
-        self.state_material_labels[state].setText(material_name)
-        self.state_status_labels[state].setText("已绑定：动作素材")
-        self.status_label.setText(f"状态：{self._state_title(state)} 已绑定 {material_name}")
+        self.set_state_material_loading(state, path)
         self.state_video_requested.emit(state, path, self.background_color, self.tolerance_slider.value())
 
     def _reset_video(self) -> None:
@@ -393,9 +391,30 @@ class ControlPanelWindow(QWidget):
                 return title
         return state
 
+    def set_state_material_loading(self, state: str, path: str) -> None:
+        material_name = Path(path).name
+        self.state_material_names[state] = material_name
+        self.state_material_labels[state].setText(material_name)
+        self.state_status_labels[state].setText("加载中：正在解析素材")
+        self.status_label.setText(f"状态：正在加载 {self._state_title(state)} 素材")
+
+    def set_state_material_loaded(self, state: str, path: str) -> None:
+        material_name = Path(path).name
+        self.state_material_names[state] = material_name
+        self.state_material_labels[state].setText(material_name)
+        self.state_status_labels[state].setText("已绑定：动作素材")
+        self.status_label.setText(f"状态：{self._state_title(state)} 已绑定 {material_name}")
+
+    def set_state_material_failed(self, state: str, path: str, error: str) -> None:
+        material_name = Path(path).name
+        self.state_material_labels[state].setText(f"{material_name} 加载失败")
+        self.state_status_labels[state].setText("加载失败：检查素材")
+        self.status_label.setText(f"状态：{self._state_title(state)} 素材加载失败：{error}")
+
     def _set_background_color(self, color: tuple) -> None:
         self.background_color = color
         self.status_label.setText(f"状态：背景色已设置为 RGB{color}")
+        self.settings_changed.emit()
 
     def _choose_color(self) -> None:
         color = QColorDialog.getColor(QColor(*self.background_color), self, "选择背景色")
@@ -408,6 +427,23 @@ class ControlPanelWindow(QWidget):
 
     def set_status(self, text: str) -> None:
         self.status_label.setText(f"状态：{text}")
+
+    def apply_settings(
+        self,
+        background_color: tuple,
+        tolerance: int,
+        scale: float,
+        state_materials: dict,
+    ) -> None:
+        self.background_color = background_color
+        self.tolerance_slider.setValue(tolerance)
+        self.scale_slider.setValue(int(scale * 100))
+        for state, path in state_materials.items():
+            if state in self.state_material_labels:
+                material_name = Path(path).name
+                self.state_material_names[state] = material_name
+                self.state_material_labels[state].setText(material_name)
+                self.state_status_labels[state].setText("已保存：启动后加载")
 
     def _apply_style(self) -> None:
         self.setStyleSheet(

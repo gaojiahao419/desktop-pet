@@ -76,6 +76,10 @@ class VideoPetSource:
         return cls(images)
 
     def next_frame(self) -> Image.Image:
-        frame = self.frames[self.index]
-        self.index = (self.index + 1) % len(self.frames)
+        frame = self.frames[self.next_frame_index()]
         return frame
+
+    def next_frame_index(self) -> int:
+        index = self.index
+        self.index = (self.index + 1) % len(self.frames)
+        return index

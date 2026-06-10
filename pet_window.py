@@ -21,6 +21,7 @@ class PetWindow(QWidget):
         self.renderer = PetRenderer()
         self.video_source = None
         self.state_video_sources = {}
+        self._pixmap_cache = {}
         self.scale = 1.0
         self.base_size = 220
         self.image_label = QLabel(self)
@@ -47,12 +48,13 @@ class PetWindow(QWidget):
         frame = self.animator.advance()
         video_source = select_video_source_for_state(frame.state, self.state_video_sources, self.video_source)
         if video_source is not None:
-            image = video_source.next_frame()
+            pixmap = self._next_video_pixmap(video_source)
         else:
             image = self.renderer.render(frame, self.animator.speech_text)
-        image = self._resize_image(image)
-        qimage = self._pil_to_qimage(image)
-        self.image_label.setPixmap(QPixmap.fromImage(qimage))
+            image = self._resize_image(image)
+            qimage = self._pil_to_qimage(image)
+            pixmap = QPixmap.fromImage(qimage)
+        self.image_label.setPixmap(pixmap)
 
         if frame.state == "walk":
             pos = self.pos()
@@ -65,26 +67,31 @@ class PetWindow(QWidget):
 
     def set_video_source(self, source: VideoPetSource) -> None:
         self.video_source = source
+        self._pixmap_cache.clear()
         self.show_pet()
 
     def clear_video_source(self) -> None:
         self.video_source = None
+        self._pixmap_cache.clear()
         self.show_pet()
 
     def set_state_video_source(self, state: str, source: VideoPetSource) -> None:
         if state not in VALID_STATES:
             raise ValueError(f"Unsupported pet state: {state}")
         self.state_video_sources[state] = source
+        self._pixmap_cache.clear()
         self.show_pet()
 
     def clear_state_video_source(self, state: str) -> None:
         self.state_video_sources.pop(state, None)
+        self._pixmap_cache.clear()
         self.show_pet()
 
     def set_scale(self, scale: float) -> None:
         old_pos = self.pos()
         self.scale = clamp_scale(scale)
         self._apply_scaled_size()
+        self._pixmap_cache.clear()
         self.move(old_pos)
         self.refresh_frame()
 
@@ -153,6 +160,19 @@ class PetWindow(QWidget):
 
     def _resize_image(self, image: Image.Image) -> Image.Image:
         display_size = int(self.base_size * self.scale)
+        return image.convert("RGBA").resize((display_size, display_size), Image.LANCZOS)
+
+    def _next_video_pixmap(self, source: VideoPetSource) -> QPixmap:
+        display_size = int(self.base_size * self.scale)
+        cache_key = (id(source), display_size)
+        if cache_key not in self._pixmap_cache:
+            self._pixmap_cache[cache_key] = [
+                QPixmap.fromImage(self._pil_to_qimage(self._resize_to_display(frame, display_size)))
+                for frame in source.frames
+            ]
+        return self._pixmap_cache[cache_key][source.next_frame_index()]
+
+    def _resize_to_display(self, image: Image.Image, display_size: int) -> Image.Image:
         return image.convert("RGBA").resize((display_size, display_size), Image.LANCZOS)
 
     def _pil_to_qimage(self, image) -> QImage:

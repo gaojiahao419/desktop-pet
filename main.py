@@ -1,11 +1,15 @@
 import sys
+from pathlib import Path
+from threading import Thread
 
+from PyQt5.QtCore import QObject, pyqtSignal
 from PyQt5.QtWidgets import QApplication
 
 from command_console import HELP_TEXT, ConsoleBridge, parse_command
 from control_panel import ControlPanelWindow
 from dialogue import LocalDialogue
 from pet_animator import PetAnimator
+from pet_settings import SETTINGS_PATH, PetSettings, load_settings, save_settings
 from pet_window import PetWindow
 from video_pet_source import VideoPetSource
 
@@ -18,17 +22,33 @@ STATE_LABELS = {
 }
 
 
+class VideoLoadSignals(QObject):
+    state_loaded = pyqtSignal(str, str, object)
+    state_failed = pyqtSignal(str, str, str)
+
+
 def main() -> int:
     app = QApplication(sys.argv)
+    settings = load_settings()
+    state_material_paths = dict(settings.state_materials)
     dialogue = LocalDialogue()
     animator = PetAnimator()
     window = PetWindow(animator, dialogue)
+    window.set_scale(settings.scale)
     window.show()
 
     control_panel = ControlPanelWindow()
+    control_panel.apply_settings(
+        settings.background_color,
+        settings.tolerance,
+        settings.scale,
+        state_material_paths,
+    )
     control_panel.show()
 
     console = ConsoleBridge()
+    loader_signals = VideoLoadSignals()
+    loader_threads = []
 
     def apply_state(name: str) -> None:
         if name == "hide":
@@ -38,6 +58,17 @@ def main() -> int:
             window.show_pet()
             return
         window.set_state(name)
+
+    def save_current_settings() -> None:
+        save_settings(
+            SETTINGS_PATH,
+            PetSettings(
+                background_color=control_panel.background_color,
+                tolerance=control_panel.tolerance_slider.value(),
+                scale=control_panel.scale_slider.value() / 100,
+                state_materials=state_material_paths.copy(),
+            ),
+        )
 
     def say_text(text: str) -> None:
         if not text:
@@ -66,17 +97,40 @@ def main() -> int:
         print(f"已加载视频素材: {path}")
 
     def load_state_video(state: str, path: str, background_color: tuple, tolerance: int) -> None:
-        try:
-            source = VideoPetSource.from_path(path, background_color, tolerance)
-        except Exception as exc:
-            message = f"{STATE_LABELS.get(state, state)}素材加载失败：{exc}"
-            control_panel.set_status(message)
-            print(message)
-            return
+        def load() -> None:
+            try:
+                source = VideoPetSource.from_path(path, background_color, tolerance)
+            except Exception as exc:
+                loader_signals.state_failed.emit(state, path, str(exc))
+                return
+            loader_signals.state_loaded.emit(state, path, source)
+
+        print(f"正在后台加载{STATE_LABELS.get(state, state)}素材: {path}")
+        thread = Thread(target=load, daemon=True)
+        loader_threads.append(thread)
+        thread.start()
+
+    def on_state_video_loaded(state: str, path: str, source: VideoPetSource) -> None:
         window.set_state_video_source(state, source)
         window.set_state(state)
-        control_panel.set_status(f"{STATE_LABELS.get(state, state)}素材已绑定：{path}")
+        state_material_paths[state] = path
+        control_panel.set_state_material_loaded(state, path)
+        save_current_settings()
         print(f"已绑定{STATE_LABELS.get(state, state)}素材: {path}")
+
+    def on_state_video_failed(state: str, path: str, error: str) -> None:
+        message = f"{STATE_LABELS.get(state, state)}素材加载失败：{error}"
+        control_panel.set_state_material_failed(state, path, error)
+        print(message)
+
+    def reset_state_video(state: str) -> None:
+        window.clear_state_video_source(state)
+        state_material_paths.pop(state, None)
+        save_current_settings()
+
+    def set_scale(scale: float) -> None:
+        window.set_scale(scale)
+        save_current_settings()
 
     control_panel.state_requested.connect(apply_state)
     control_panel.say_requested.connect(say_text)
@@ -84,9 +138,21 @@ def main() -> int:
     control_panel.video_requested.connect(load_video)
     control_panel.reset_video_requested.connect(window.clear_video_source)
     control_panel.state_video_requested.connect(load_state_video)
-    control_panel.reset_state_video_requested.connect(window.clear_state_video_source)
-    control_panel.scale_requested.connect(window.set_scale)
+    control_panel.reset_state_video_requested.connect(reset_state_video)
+    control_panel.scale_requested.connect(set_scale)
+    control_panel.settings_changed.connect(save_current_settings)
     control_panel.quit_requested.connect(app.quit)
+    loader_signals.state_loaded.connect(on_state_video_loaded)
+    loader_signals.state_failed.connect(on_state_video_failed)
+
+    for state, path in state_material_paths.copy().items():
+        if state not in control_panel.state_material_labels:
+            continue
+        if Path(path).exists():
+            control_panel.set_state_material_loading(state, path)
+            load_state_video(state, path, control_panel.background_color, control_panel.tolerance_slider.value())
+        else:
+            control_panel.set_state_material_failed(state, path, "文件不存在")
 
     def handle_line(line: str) -> None:
         command = parse_command(line)
