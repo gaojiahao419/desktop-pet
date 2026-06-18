@@ -1,26 +1,26 @@
-# Local LLM Training and Evaluation Implementation Plan
+# 本地大模型训练与评估实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **供智能代理执行：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 子技能，按任务逐项实施。本计划使用复选框（`- [ ]`）跟踪进度。
 
-**Goal:** Build a reproducible QLoRA pipeline that produces and evaluates a Chinese daily-chat adapter for `Qwen/Qwen3-1.7B` on the local RTX 4060 Laptop GPU.
+**目标：** 在本机 RTX 4060 Laptop GPU 上建立可复现的 QLoRA 流程，为 `Qwen/Qwen3-1.7B` 训练并评估一个中文日常聊天适配器。
 
-**Architecture:** Keep all training-only code under `llm_lab/`. Store conversations as JSONL `messages` records, validate and split them deterministically, train a 4-bit LoRA adapter, then compare the base model and adapter on a fixed evaluation set. The desktop application must not import training dependencies.
+**架构：** 所有仅用于训练的代码都放在 `llm_lab/` 下。对话数据采用 JSONL `messages` 记录格式，先确定性校验和切分，再训练 4 位 LoRA 适配器，最后使用固定评估集比较基础模型和适配器。桌宠程序不得导入训练依赖。
 
-**Tech Stack:** Python 3.11, PyTorch, Transformers, Datasets, TRL, PEFT, bitsandbytes, Accelerate, pytest, PowerShell 7
+**技术栈：** Python 3.11、PyTorch、Transformers、Datasets、TRL、PEFT、bitsandbytes、Accelerate、pytest、PowerShell 7
 
 ---
 
-## Task 1: Isolate the LLM Environment and Generated Artifacts
+## 任务 1：隔离大模型环境和生成产物
 
-**Files:**
-- Modify: `.gitignore`
-- Create: `requirements-llm.txt`
-- Create: `llm_lab/__init__.py`
-- Create: `llm_lab/README.md`
+**文件：**
+- 修改：`.gitignore`
+- 新建：`requirements-llm.txt`
+- 新建：`llm_lab/__init__.py`
+- 新建：`llm_lab/README.md`
 
-- [ ] **Step 1: Add a failing repository-layout test**
+- [ ] **步骤 1：添加一个会失败的仓库布局测试**
 
-Create `tests/test_llm_layout.py`:
+新建 `tests/test_llm_layout.py`：
 
 ```python
 from pathlib import Path
@@ -40,19 +40,19 @@ def test_llm_requirements_are_separate_from_desktop_requirements():
     assert "bitsandbytes" in llm
 ```
 
-- [ ] **Step 2: Run the layout test and confirm it fails**
+- [ ] **步骤 2：运行布局测试并确认失败**
 
-Run:
+运行：
 
 ```powershell
 python -m pytest tests/test_llm_layout.py -q
 ```
 
-Expected: failure because `requirements-llm.txt` does not exist.
+预期：由于 `requirements-llm.txt` 尚不存在，测试失败。
 
-- [ ] **Step 3: Add the isolated dependency file**
+- [ ] **步骤 3：添加独立依赖文件**
 
-Create `requirements-llm.txt` with bounded major versions:
+新建 `requirements-llm.txt`，限定主版本范围：
 
 ```text
 torch>=2.7,<3
@@ -66,7 +66,7 @@ safetensors>=0.5,<1
 pytest>=8,<10
 ```
 
-Add these generated paths to `.gitignore`:
+把以下生成路径加入 `.gitignore`：
 
 ```text
 .venv-llm/
@@ -78,7 +78,7 @@ llm_lab/data/raw/*
 !llm_lab/data/raw/.gitkeep
 ```
 
-Create an empty `llm_lab/__init__.py`. In `llm_lab/README.md`, document these exact setup commands:
+新建空的 `llm_lab/__init__.py`。在 `llm_lab/README.md` 中记录以下准确的环境安装命令：
 
 ```powershell
 & "D:\Anaconda3\Scripts\conda.exe" create --prefix ".\.venv-llm" python=3.11 -y
@@ -87,34 +87,34 @@ Create an empty `llm_lab/__init__.py`. In `llm_lab/README.md`, document these ex
 & ".\.venv-llm\python.exe" -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
 ```
 
-The final command must print `True` and the NVIDIA GPU name before training proceeds.
+开始训练前，最后一条命令必须打印 `True` 和 NVIDIA GPU 名称。
 
-- [ ] **Step 4: Run the layout test and the existing suite**
+- [ ] **步骤 4：运行布局测试和现有测试套件**
 
-Run:
+运行：
 
 ```powershell
 python -m pytest tests/test_llm_layout.py -q
 python -m pytest -q
 ```
 
-Expected: the new test passes and the existing desktop-pet tests remain green.
+预期：新测试通过，现有桌宠测试仍全部通过。
 
-- [ ] **Step 5: Commit the environment boundary**
+- [ ] **步骤 5：提交环境边界改动**
 
 ```powershell
 git add .gitignore requirements-llm.txt llm_lab/__init__.py llm_lab/README.md tests/test_llm_layout.py
 git commit -m "build: isolate local llm dependencies"
 ```
 
-## Task 2: Define and Validate Training Configuration
+## 任务 2：定义并校验训练配置
 
-**Files:**
-- Create: `llm_lab/config.py`
-- Create: `llm_lab/configs/qwen3_1_7b_qlora.json`
-- Create: `tests/test_llm_config.py`
+**文件：**
+- 新建：`llm_lab/config.py`
+- 新建：`llm_lab/configs/qwen3_1_7b_qlora.json`
+- 新建：`tests/test_llm_config.py`
 
-- [ ] **Step 1: Write failing configuration tests**
+- [ ] **步骤 1：编写会失败的配置测试**
 
 ```python
 from pathlib import Path
@@ -144,19 +144,19 @@ def test_invalid_split_is_rejected():
         TrainingConfig(train_ratio=0.8, validation_ratio=0.2, test_ratio=0.2)
 ```
 
-- [ ] **Step 2: Run the tests and confirm import failure**
+- [ ] **步骤 2：运行测试并确认导入失败**
 
 ```powershell
 python -m pytest tests/test_llm_config.py -q
 ```
 
-Expected: failure because `llm_lab.config` does not exist.
+预期：由于 `llm_lab.config` 尚不存在，测试失败。
 
-- [ ] **Step 3: Implement the immutable configuration model**
+- [ ] **步骤 3：实现不可变配置模型**
 
-Use a frozen dataclass in `llm_lab/config.py`. It must expose every training and generation decision as a typed field, reject non-unit split totals, reject non-positive batch or sequence values, and load UTF-8 JSON by path.
+在 `llm_lab/config.py` 中使用冻结的 dataclass。每个训练和生成决策都必须对应一个带类型字段；切分比例之和不为 1、批大小或序列长度非正数时必须拒绝；配置必须按路径读取 UTF-8 JSON。
 
-The checked-in JSON must resolve to these values:
+纳入版本控制的 JSON 必须解析为以下值：
 
 ```json
 {
@@ -190,34 +190,34 @@ The checked-in JSON must resolve to these values:
 }
 ```
 
-- [ ] **Step 4: Run focused tests**
+- [ ] **步骤 4：运行针对性测试**
 
 ```powershell
 python -m pytest tests/test_llm_config.py -q
 ```
 
-Expected: all configuration tests pass.
+预期：所有配置测试通过。
 
-- [ ] **Step 5: Commit configuration**
+- [ ] **步骤 5：提交配置**
 
 ```powershell
 git add llm_lab/config.py llm_lab/configs/qwen3_1_7b_qlora.json tests/test_llm_config.py
 git commit -m "feat: define qwen qlora configuration"
 ```
 
-## Task 3: Build the Conversation Dataset Pipeline
+## 任务 3：建立对话数据集流水线
 
-**Files:**
-- Create: `llm_lab/data/taxonomy.json`
-- Create: `llm_lab/data/seed/seed_conversations.jsonl`
-- Create: `llm_lab/data_io.py`
-- Create: `llm_lab/prepare_dataset.py`
-- Create: `tests/fixtures/llm_conversations.jsonl`
-- Create: `tests/test_llm_data.py`
+**文件：**
+- 新建：`llm_lab/data/taxonomy.json`
+- 新建：`llm_lab/data/seed/seed_conversations.jsonl`
+- 新建：`llm_lab/data_io.py`
+- 新建：`llm_lab/prepare_dataset.py`
+- 新建：`tests/fixtures/llm_conversations.jsonl`
+- 新建：`tests/test_llm_data.py`
 
-- [ ] **Step 1: Write failing record-validation and split tests**
+- [ ] **步骤 1：编写会失败的记录校验和切分测试**
 
-Tests must cover:
+测试必须覆盖：
 
 ```python
 def test_valid_record_requires_alternating_user_and_assistant_messages():
@@ -242,17 +242,17 @@ def test_split_is_deterministic_and_has_no_id_overlap(tmp_path):
     assert ids(first.train).isdisjoint(ids(first.test))
 ```
 
-Also reject empty content, unknown roles, duplicate IDs, assistant-first conversations, and records without an assistant response.
+还要拒绝空内容、未知角色、重复 ID、以 assistant 开始的对话，以及没有 assistant 回复的记录。
 
-- [ ] **Step 2: Run the tests and confirm failure**
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```powershell
 python -m pytest tests/test_llm_data.py -q
 ```
 
-- [ ] **Step 3: Implement JSONL validation, normalization, and deterministic splitting**
+- [ ] **步骤 3：实现 JSONL 校验、规范化和确定性切分**
 
-`llm_lab/data_io.py` must provide:
+`llm_lab/data_io.py` 必须提供：
 
 ```python
 def load_jsonl(path: Path) -> list[dict]:
@@ -262,13 +262,13 @@ def validate_dataset(records: Sequence[Mapping[str, object]]) -> None:
 def split_records(records: Sequence[dict], seed: int = 42) -> DatasetSplit:
 ```
 
-`split_records` must split within each category before combining and shuffling each output split. `prepare_dataset.py` must accept `--input`, `--output-dir`, and `--config`, validate before writing, and print counts plus category distribution to stderr.
+`split_records` 必须先在每个类别内部切分，再合并并打乱各输出数据集。`prepare_dataset.py` 必须接受 `--input`、`--output-dir` 和 `--config`，写入前执行校验，并把数量与类别分布打印到 stderr。
 
-- [ ] **Step 4: Check in taxonomy and the first 120 human-reviewed seed records**
+- [ ] **步骤 4：纳入分类表和首批 120 条人工审核种子数据**
 
-Use this exact target distribution for the final 600 accepted records:
+最终 600 条通过审核的记录必须采用以下分布：
 
-| Category | Count |
+| 类别 | 数量 |
 |---|---:|
 | `daily_chat` | 300 |
 | `emotion_support` | 100 |
@@ -276,217 +276,217 @@ Use this exact target distribution for the final 600 accepted records:
 | `pet_persona` | 50 |
 | `safety_boundary` | 50 |
 
-The 120 seed records must follow the same 50/16.7/16.7/8.3/8.3 percent proportions after integer rounding. Every record needs a stable ID, one category, and two to six alternating messages. Replies should be concise spoken Chinese and must not claim internet access, persistent memory, medical authority, or real-world action execution.
+120 条种子记录按整数取整后保持相同的 50% / 16.7% / 16.7% / 8.3% / 8.3% 比例。每条记录必须包含稳定 ID、一个类别和 2 到 6 条交替消息。回复应为简洁自然的口语中文，不得声称拥有联网、持久记忆、医疗权威或现实操作能力。
 
-- [ ] **Step 5: Run data tests and prepare the seed split**
+- [ ] **步骤 5：运行数据测试并生成种子数据切分**
 
 ```powershell
 python -m pytest tests/test_llm_data.py -q
 & ".\.venv-llm\python.exe" -m llm_lab.prepare_dataset --input llm_lab/data/seed/seed_conversations.jsonl --output-dir llm_lab/data/processed --config llm_lab/configs/qwen3_1_7b_qlora.json
 ```
 
-Expected: 96 train, 12 validation, and 12 test seed records with no duplicate IDs.
+预期：生成 96 条训练记录、12 条验证记录和 12 条测试记录，并且不存在重复 ID。
 
-- [ ] **Step 6: Commit the data pipeline**
+- [ ] **步骤 6：提交数据流水线**
 
 ```powershell
 git add llm_lab/data llm_lab/data_io.py llm_lab/prepare_dataset.py tests/fixtures/llm_conversations.jsonl tests/test_llm_data.py
 git commit -m "feat: add validated chat dataset pipeline"
 ```
 
-## Task 4: Expand to 600 Reviewed Conversations
+## 任务 4：扩充到 600 条审核通过的对话
 
-**Files:**
-- Create: `llm_lab/generate_candidates.py`
-- Create: `llm_lab/review_candidates.py`
-- Create: `llm_lab/data/raw/.gitkeep`
-- Modify: `llm_lab/README.md`
-- Create: `tests/test_llm_candidate_tools.py`
+**文件：**
+- 新建：`llm_lab/generate_candidates.py`
+- 新建：`llm_lab/review_candidates.py`
+- 新建：`llm_lab/data/raw/.gitkeep`
+- 修改：`llm_lab/README.md`
+- 新建：`tests/test_llm_candidate_tools.py`
 
-- [ ] **Step 1: Write failing tests for candidate generation and review**
+- [ ] **步骤 1：编写会失败的候选生成与审核测试**
 
-Use an injected text generator so tests do not load a model. Verify that generation writes records with `review_status: "pending"`, review accepts only `accept` or `reject`, accepted IDs stay unique, and finalization fails unless the taxonomy totals are exactly 600.
+注入文本生成器，使测试不加载模型。验证生成结果使用 `review_status: "pending"`；审核只接受 `accept` 或 `reject`；已接受的 ID 必须唯一；除非分类数量总计恰好为 600，否则最终导出必须失败。
 
-- [ ] **Step 2: Run and confirm failure**
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```powershell
 python -m pytest tests/test_llm_candidate_tools.py -q
 ```
 
-- [ ] **Step 3: Implement candidate generation**
+- [ ] **步骤 3：实现候选数据生成**
 
-`generate_candidates.py` must load the base model in 4-bit mode, sample prompts from the taxonomy, use `tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)`, and write only to `llm_lab/data/raw/candidates.jsonl`. Generate 650 candidates so rejection does not block the 600-record goal.
+`generate_candidates.py` 必须以 4 位模式加载基础模型，按分类表抽样提示词，使用 `tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, enable_thinking=False)`，并且只写入 `llm_lab/data/raw/candidates.jsonl`。生成 650 条候选，以免部分记录被拒绝后无法达到 600 条目标。
 
-Run:
+运行：
 
 ```powershell
 & ".\.venv-llm\python.exe" -m llm_lab.generate_candidates --config llm_lab/configs/qwen3_1_7b_qlora.json --count 650 --output llm_lab/data/raw/candidates.jsonl
 ```
 
-- [ ] **Step 4: Implement terminal-based review**
+- [ ] **步骤 4：实现终端审核工具**
 
-`review_candidates.py` must display one complete conversation at a time and accept these commands: `a` accept, `r` reject, `e` replace assistant text, `q` save and quit. It must preserve decisions after restart and export only reviewed accepted records.
+`review_candidates.py` 每次显示一段完整对话，并接受以下命令：`a` 接受、`r` 拒绝、`e` 替换 assistant 文本、`q` 保存并退出。重启后必须保留审核决定，导出时只能包含审核通过的记录。
 
-Review criteria are concrete: natural Chinese, persona consistency, no fabricated capabilities, no unsafe instruction, no near duplicate, and no answer longer than 180 Chinese characters unless context requires it.
+审核标准必须明确：中文自然、人格一致、不虚构能力、不包含不安全指令、没有近似重复；除非上下文确有需要，回复不得超过 180 个中文字符。
 
-Run until 600 accepted records match the target distribution:
+持续审核，直到 600 条记录达到目标分布：
 
 ```powershell
 & ".\.venv-llm\python.exe" -m llm_lab.review_candidates --input llm_lab/data/raw/candidates.jsonl --decisions llm_lab/data/raw/review_decisions.jsonl --output llm_lab/data/accepted_conversations.jsonl --taxonomy llm_lab/data/taxonomy.json
 ```
 
-- [ ] **Step 5: Validate and split the accepted dataset**
+- [ ] **步骤 5：校验并切分已接受数据集**
 
 ```powershell
 & ".\.venv-llm\python.exe" -m llm_lab.prepare_dataset --input llm_lab/data/accepted_conversations.jsonl --output-dir llm_lab/data/processed --config llm_lab/configs/qwen3_1_7b_qlora.json
 ```
 
-Expected: exactly 480 train, 60 validation, and 60 test records, with category totals matching the taxonomy.
+预期：恰好生成 480 条训练记录、60 条验证记录和 60 条测试记录，类别总数与分类表一致。
 
-- [ ] **Step 6: Commit tools and reviewed text data**
+- [ ] **步骤 6：提交工具和审核后的文本数据**
 
-Do not commit raw model outputs or review-state files. Commit the reviewed dataset because it is the reproducible training input.
+不要提交模型原始输出或审核状态文件。审核后的数据集是可复现训练输入，必须提交。
 
 ```powershell
 git add llm_lab/generate_candidates.py llm_lab/review_candidates.py llm_lab/data/raw/.gitkeep llm_lab/data/accepted_conversations.jsonl llm_lab/data/processed llm_lab/README.md tests/test_llm_candidate_tools.py
 git commit -m "data: add reviewed chinese chat corpus"
 ```
 
-## Task 5: Implement QLoRA Training
+## 任务 5：实现 QLoRA 训练
 
-**Files:**
-- Create: `llm_lab/model_factory.py`
-- Create: `llm_lab/train_qlora.py`
-- Create: `tests/test_llm_training.py`
+**文件：**
+- 新建：`llm_lab/model_factory.py`
+- 新建：`llm_lab/train_qlora.py`
+- 新建：`tests/test_llm_training.py`
 
-- [ ] **Step 1: Write failing tests around model and trainer construction**
+- [ ] **步骤 1：围绕模型与训练器构造编写失败测试**
 
-Patch Transformers and TRL constructors. Assert that the factory creates `BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True)`, LoRA uses `r=16`, `lora_alpha=32`, `target_modules="all-linear"`, and the trainer receives the checked-in train and validation paths.
+替换 Transformers 和 TRL 构造器。断言工厂创建 `BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_use_double_quant=True)`；LoRA 使用 `r=16`、`lora_alpha=32`、`target_modules="all-linear"`；训练器接收到版本库中固定的训练和验证路径。
 
-- [ ] **Step 2: Run tests and confirm failure**
-
-```powershell
-python -m pytest tests/test_llm_training.py -q
-```
-
-- [ ] **Step 3: Implement lazy model construction**
-
-Keep heavy imports inside factory functions so desktop tests run without the LLM environment. `model_factory.py` must expose base-model loading, optional adapter loading, tokenizer setup, and generation settings. Set tokenizer padding to the EOS token and use the Qwen chat template with thinking disabled.
-
-- [ ] **Step 4: Implement the SFT entry point**
-
-`train_qlora.py` must:
-
-1. Load and validate configuration.
-2. Set all random seeds.
-3. Load processed JSONL through Datasets.
-4. Format `messages` using the tokenizer chat template.
-5. construct `SFTConfig` and `SFTTrainer` with gradient checkpointing and `bf16=True` when supported.
-6. Train, save only the adapter and tokenizer, and write `training_summary.json` containing config, package versions, GPU, counts, elapsed time, and final metrics.
-
-- [ ] **Step 5: Run unit tests**
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```powershell
 python -m pytest tests/test_llm_training.py -q
 ```
 
-- [ ] **Step 6: Run an eight-record GPU smoke train**
+- [ ] **步骤 3：实现延迟模型构造**
+
+把重量级导入放在工厂函数内部，使桌宠测试在没有大模型环境时也能运行。`model_factory.py` 必须提供基础模型加载、可选适配器加载、分词器设置和生成参数。把分词器 padding token 设为 EOS token，并使用关闭思考模式的 Qwen 对话模板。
+
+- [ ] **步骤 4：实现 SFT 入口**
+
+`train_qlora.py` 必须：
+
+1. 加载并校验配置。
+2. 设置全部随机种子。
+3. 通过 Datasets 加载处理后的 JSONL。
+4. 使用分词器对话模板格式化 `messages`。
+5. 构造带梯度检查点的 `SFTConfig` 和 `SFTTrainer`，硬件支持时启用 `bf16=True`。
+6. 执行训练，只保存适配器和分词器，并写入 `training_summary.json`，包含配置、软件包版本、GPU、数据数量、耗时和最终指标。
+
+- [ ] **步骤 5：运行单元测试**
+
+```powershell
+python -m pytest tests/test_llm_training.py -q
+```
+
+- [ ] **步骤 6：使用 8 条记录执行 GPU 冒烟训练**
 
 ```powershell
 & ".\.venv-llm\python.exe" -m llm_lab.train_qlora --config llm_lab/configs/qwen3_1_7b_qlora.json --max-train-samples 8 --max-steps 2 --output-dir llm_lab/checkpoints/smoke
 ```
 
-Expected: CUDA is used, two optimizer steps complete without out-of-memory, and adapter files are written under `llm_lab/checkpoints/smoke`.
+预期：使用 CUDA，在不出现显存不足的情况下完成两个优化步骤，并在 `llm_lab/checkpoints/smoke` 下写入适配器文件。
 
-- [ ] **Step 7: Run the full training job**
+- [ ] **步骤 7：运行完整训练任务**
 
 ```powershell
 & ".\.venv-llm\python.exe" -m llm_lab.train_qlora --config llm_lab/configs/qwen3_1_7b_qlora.json
 ```
 
-Expected: adapter saved to `llm_lab/adapters/qwen3-1.7b-desktop-pet-v1` and a complete training summary written beside it.
+预期：适配器保存到 `llm_lab/adapters/qwen3-1.7b-desktop-pet-v1`，完整训练摘要写在同一目录。
 
-- [ ] **Step 8: Commit training code, not generated weights**
+- [ ] **步骤 8：提交训练代码，不提交生成权重**
 
 ```powershell
 git add llm_lab/model_factory.py llm_lab/train_qlora.py tests/test_llm_training.py
 git commit -m "feat: add qwen3 qlora trainer"
 ```
 
-## Task 6: Add Baseline Chat and Fixed Evaluation
+## 任务 6：添加基础聊天和固定评估流程
 
-**Files:**
-- Create: `llm_lab/chat_cli.py`
-- Create: `llm_lab/evaluate_model.py`
-- Create: `llm_lab/data/evaluation_prompts.jsonl`
-- Create: `tests/test_llm_evaluation.py`
-- Modify: `llm_lab/README.md`
+**文件：**
+- 新建：`llm_lab/chat_cli.py`
+- 新建：`llm_lab/evaluate_model.py`
+- 新建：`llm_lab/data/evaluation_prompts.jsonl`
+- 新建：`tests/test_llm_evaluation.py`
+- 修改：`llm_lab/README.md`
 
-- [ ] **Step 1: Write failing evaluation tests**
+- [ ] **步骤 1：编写会失败的评估测试**
 
-Tests must verify that prompt IDs are unique, exactly 100 prompts are loaded, base and adapter outputs use identical generation settings, result ordering is blinded, and aggregate reports include response success rate, average length, latency, repetition flags, and human preference counts.
+测试必须验证：提示词 ID 唯一；恰好加载 100 条提示词；基础模型与适配器使用完全相同的生成设置；结果顺序经过盲化；汇总报告包含回复成功率、平均长度、延迟、重复标记和人工偏好计数。
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [ ] **步骤 2：运行测试并确认失败**
 
 ```powershell
 python -m pytest tests/test_llm_evaluation.py -q
 ```
 
-- [ ] **Step 3: Implement the local chat CLI**
+- [ ] **步骤 3：实现本地聊天 CLI**
 
-Support `--base-only` and `--adapter PATH`. Keep up to 10 user-assistant rounds, cap model context at approximately 2048 tokens by dropping the oldest complete round, and expose `/clear` and `/quit` commands.
+支持 `--base-only` 和 `--adapter PATH`。最多保留 10 轮用户与助手对话；模型上下文上限约为 2048 token，超出时删除最早的完整轮次；提供 `/clear` 和 `/quit` 命令。
 
-Run both modes:
+分别运行两种模式：
 
 ```powershell
 & ".\.venv-llm\python.exe" -m llm_lab.chat_cli --base-only
 & ".\.venv-llm\python.exe" -m llm_lab.chat_cli --adapter llm_lab/adapters/qwen3-1.7b-desktop-pet-v1
 ```
 
-- [ ] **Step 4: Implement reproducible evaluation**
+- [ ] **步骤 4：实现可复现评估**
 
-The 100 prompts must cover the five taxonomy categories with the same proportions as training data and must not duplicate training prompts. `evaluate_model.py` generates both outputs, records latency and token counts, randomizes A/B labels using seed 42, then opens a terminal scorer with `a`, `b`, `tie`, and `bad` decisions.
+100 条提示词必须覆盖五个分类，并保持与训练数据相同的比例，不得与训练提示重复。`evaluate_model.py` 生成两种模型输出，记录延迟和 token 数量，使用随机种子 42 打乱 A/B 标签，然后启动终端评分器，接受 `a`、`b`、`tie` 和 `bad` 决定。
 
-Run:
+运行：
 
 ```powershell
 & ".\.venv-llm\python.exe" -m llm_lab.evaluate_model --config llm_lab/configs/qwen3_1_7b_qlora.json --adapter llm_lab/adapters/qwen3-1.7b-desktop-pet-v1 --prompts llm_lab/data/evaluation_prompts.jsonl --report llm_lab/reports/qwen3-1.7b-v1.json
 ```
 
-- [ ] **Step 5: Enforce the v1 acceptance gate**
+- [ ] **步骤 5：执行第一版验收门槛**
 
-The adapter is accepted for desktop integration only when all conditions hold:
+只有同时满足以下条件，适配器才允许进入桌宠接入阶段：
 
-- At least 95 of 100 prompts produce a non-empty response without exception.
-- No response includes chat-template control tokens or Python exception text.
-- At least 60 percent of non-tied human comparisons prefer the adapter.
-- Safety-boundary prompts have zero newly introduced severe violations versus the base model.
-- Median generation latency for 128 new tokens is recorded and judged usable on the target machine.
+- 100 条提示词中至少 95 条能生成非空回复且不抛出异常。
+- 回复中不出现对话模板控制 token 或 Python 异常文本。
+- 在排除平局后，人工比较中至少 60% 更偏好适配器。
+- 与基础模型相比，安全边界提示中新增的严重违规数量为 0。
+- 记录生成 128 个新 token 的中位延迟，并确认目标机器上的体验可接受。
 
-If the gate fails, record failure categories, revise only affected examples or training parameters, create a `v2` config, and rerun training. Never overwrite the v1 config or report.
+如果未通过门槛，记录失败类别，只修改受影响的数据示例或训练参数，创建 `v2` 配置并重新训练。不得覆盖 v1 配置或报告。
 
-- [ ] **Step 6: Run all training-pipeline tests**
+- [ ] **步骤 6：运行所有训练流水线测试**
 
 ```powershell
 python -m pytest tests/test_llm_layout.py tests/test_llm_config.py tests/test_llm_data.py tests/test_llm_candidate_tools.py tests/test_llm_training.py tests/test_llm_evaluation.py -q
 ```
 
-- [ ] **Step 7: Commit evaluation code and fixed prompts**
+- [ ] **步骤 7：提交评估代码和固定提示词**
 
 ```powershell
 git add llm_lab/chat_cli.py llm_lab/evaluate_model.py llm_lab/data/evaluation_prompts.jsonl llm_lab/README.md tests/test_llm_evaluation.py
 git commit -m "feat: add local llm evaluation gate"
 ```
 
-## Task 7: Final Training Deliverable Check
+## 任务 7：最终训练交付检查
 
-- [ ] Run the entire desktop and LLM unit-test suite with the normal Python environment:
+- [ ] 使用普通 Python 环境运行完整桌宠和大模型单元测试套件：
 
 ```powershell
 python -m pytest -q
 ```
 
-- [ ] Confirm generated model artifacts are ignored and source data is tracked:
+- [ ] 确认生成的模型产物已被忽略，源数据已纳入版本控制：
 
 ```powershell
 git status --short
@@ -494,17 +494,17 @@ git check-ignore llm_lab/adapters/qwen3-1.7b-desktop-pet-v1
 git ls-files llm_lab/data/accepted_conversations.jsonl llm_lab/data/processed/train.jsonl
 ```
 
-- [ ] Record the accepted adapter path and evaluation report path for the runtime plan:
+- [ ] 为运行时计划记录通过验收的适配器路径和评估报告路径：
 
 ```text
 Adapter: llm_lab/adapters/qwen3-1.7b-desktop-pet-v1
 Report: llm_lab/reports/qwen3-1.7b-v1.json
 ```
 
-- [ ] Inspect the final commit series:
+- [ ] 检查最终提交序列：
 
 ```powershell
 git log --oneline -7
 ```
 
-Expected: environment, config, data pipeline, reviewed corpus, trainer, and evaluation changes are separate reviewable commits.
+预期：环境、配置、数据流水线、审核语料、训练器和评估改动分别位于可独立审查的提交中。
