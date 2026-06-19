@@ -4,12 +4,14 @@ import copy
 import hashlib
 import json
 import math
+import os
 import random
+import tempfile
 from collections import defaultdict
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TypedDict, cast
 
 
 DEFAULT_CATEGORIES = frozenset(
@@ -23,19 +25,34 @@ DEFAULT_CATEGORIES = frozenset(
 )
 
 
+class Message(TypedDict):
+    role: str
+    content: str
+
+
+class ConversationRecord(TypedDict):
+    id: str
+    category: str
+    messages: list[Message]
+
+
 @dataclass(frozen=True)
 class DatasetSplit:
-    train: list[dict]
-    validation: list[dict]
-    test: list[dict]
+    train: list[ConversationRecord]
+    validation: list[ConversationRecord]
+    test: list[ConversationRecord]
 
 
-def load_jsonl(path: Path) -> list[dict]:
+def load_jsonl(path: Path) -> list[ConversationRecord]:
     jsonl_path = Path(path)
-    records: list[dict] = []
+    records: list[ConversationRecord] = []
     try:
-        with jsonl_path.open(encoding="utf-8") as jsonl_file:
+        with jsonl_path.open(encoding="utf-8-sig") as jsonl_file:
             for line_number, line in enumerate(jsonl_file, start=1):
+                if not line.strip():
+                    raise ValueError(
+                        f"Invalid blank JSONL line {line_number} in {jsonl_path}"
+                    )
                 try:
                     value = json.loads(line)
                 except json.JSONDecodeError as exc:
@@ -47,21 +64,43 @@ def load_jsonl(path: Path) -> list[dict]:
                     raise ValueError(
                         f"JSONL line {line_number} in {jsonl_path} must be an object"
                     )
-                records.append(value)
+                records.append(cast(ConversationRecord, value))
     except FileNotFoundError as exc:
         raise FileNotFoundError(f"JSONL file not found: {jsonl_path}") from exc
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            f"Unable to decode {jsonl_path} as UTF-8: {exc.reason}"
+        ) from exc
     return records
 
 
-def write_jsonl(path: Path, records: Sequence[dict]) -> None:
+def write_jsonl(path: Path, records: Sequence[ConversationRecord]) -> None:
     jsonl_path = Path(path)
+    serialized_records: list[str] = []
+    for record in records:
+        if not isinstance(record, dict):
+            raise ValueError("Each JSONL record must be an object")
+        serialized_records.append(
+            json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+        )
+    payload = "".join(f"{record}\n" for record in serialized_records)
+
     jsonl_path.parent.mkdir(parents=True, exist_ok=True)
-    with jsonl_path.open("w", encoding="utf-8", newline="\n") as jsonl_file:
-        for record in records:
-            if not isinstance(record, dict):
-                raise ValueError("Each JSONL record must be an object")
-            json.dump(record, jsonl_file, ensure_ascii=False, separators=(",", ":"))
-            jsonl_file.write("\n")
+    file_descriptor, temp_name = tempfile.mkstemp(
+        dir=jsonl_path.parent,
+        prefix=f".{jsonl_path.name}.",
+        suffix=".tmp",
+    )
+    temp_path = Path(temp_name)
+    os.close(file_descriptor)
+    try:
+        with temp_path.open("w", encoding="utf-8", newline="\n") as temp_file:
+            temp_file.write(payload)
+            temp_file.flush()
+            os.fsync(temp_file.fileno())
+        os.replace(temp_path, jsonl_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def validate_record(
@@ -124,6 +163,8 @@ def validate_dataset(
     records: Sequence[Mapping[str, object]],
     allowed_categories: Collection[str] | None = None,
 ) -> None:
+    if not records:
+        raise ValueError("Dataset must contain at least one record; empty is invalid")
     seen_ids: set[str] = set()
     for index, record in enumerate(records, start=1):
         try:
@@ -160,40 +201,66 @@ def _validate_ratios(
         raise ValueError("Split ratios must sum to 1")
 
 
+def _allocate_split_counts(
+    count: int,
+    ratios: tuple[float, float, float],
+) -> tuple[int, int, int]:
+    """Use largest remainders; ties follow train, validation, test order."""
+    quotas = [count * ratio for ratio in ratios]
+    counts = [math.floor(quota) for quota in quotas]
+    remaining = count - sum(counts)
+    remainder_order = sorted(
+        range(3),
+        key=lambda index: (-(quotas[index] - counts[index]), index),
+    )
+    for index in remainder_order[:remaining]:
+        counts[index] += 1
+
+    zero_indexes = [
+        index for index, split_count in enumerate(counts) if split_count == 0
+    ]
+    for zero_index in zero_indexes:
+        donor_index = min(
+            (index for index, split_count in enumerate(counts) if split_count > 1),
+            key=lambda index: (-counts[index], index),
+        )
+        counts[donor_index] -= 1
+        counts[zero_index] += 1
+    return cast(tuple[int, int, int], tuple(counts))
+
+
 def split_records(
     records: Sequence[Mapping[str, object]],
     seed: int = 42,
     train_ratio: float = 0.8,
     validation_ratio: float = 0.1,
     test_ratio: float = 0.1,
+    allowed_categories: Collection[str] | None = None,
 ) -> DatasetSplit:
     _validate_ratios(train_ratio, validation_ratio, test_ratio)
-    validate_dataset(records)
+    validate_dataset(records, allowed_categories)
 
-    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    grouped: dict[str, list[ConversationRecord]] = defaultdict(list)
     for record in records:
-        grouped[str(record["category"])].append(copy.deepcopy(dict(record)))
+        grouped[str(record["category"])].append(
+            cast(ConversationRecord, copy.deepcopy(dict(record)))
+        )
 
-    train: list[dict] = []
-    validation: list[dict] = []
-    test: list[dict] = []
+    train: list[ConversationRecord] = []
+    validation: list[ConversationRecord] = []
+    test: list[ConversationRecord] = []
     for category in sorted(grouped):
         category_records = grouped[category]
         _derived_random(seed, f"category:{category}").shuffle(category_records)
         count = len(category_records)
-        train_count = int(count * train_ratio)
-        validation_count = int(count * validation_ratio)
-        test_count = count - train_count - validation_count
-        if validation_count == 0 or test_count == 0:
+        if count < 3:
             raise ValueError(
-                f"Category {category!r} with {count} records cannot produce "
-                "non-empty validation and test splits"
+                f"Category {category!r} must contain at least 3 records; got {count}"
             )
-        if train_count == 0:
-            raise ValueError(
-                f"Category {category!r} with {count} records cannot produce "
-                "a non-empty train split"
-            )
+        train_count, validation_count, test_count = _allocate_split_counts(
+            count,
+            (train_ratio, validation_ratio, test_ratio),
+        )
 
         train.extend(category_records[:train_count])
         validation.extend(

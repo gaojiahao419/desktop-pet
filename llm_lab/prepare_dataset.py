@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import tempfile
 from collections import Counter
 from pathlib import Path
 from typing import Sequence
@@ -79,10 +81,29 @@ def run(input_path: Path, output_dir: Path, config_path: Path) -> None:
         train_ratio=config.train_ratio,
         validation_ratio=config.validation_ratio,
         test_ratio=config.test_ratio,
+        allowed_categories=categories,
     )
-    write_jsonl(output_dir / "train.jsonl", split.train)
-    write_jsonl(output_dir / "validation.jsonl", split.validation)
-    write_jsonl(output_dir / "test.jsonl", split.test)
+    output_dir = Path(output_dir)
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    split_records_by_name = {
+        "train": split.train,
+        "validation": split.validation,
+        "test": split.test,
+    }
+    with tempfile.TemporaryDirectory(
+        dir=output_dir.parent,
+        prefix=f".{output_dir.name}-",
+    ) as staging_directory:
+        staging_dir = Path(staging_directory)
+        for split_name, split_data in split_records_by_name.items():
+            write_jsonl(staging_dir / f"{split_name}.jsonl", split_data)
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for split_name in split_records_by_name:
+            os.replace(
+                staging_dir / f"{split_name}.jsonl",
+                output_dir / f"{split_name}.jsonl",
+            )
     _report(split, len(records), categories)
 
 

@@ -6,10 +6,12 @@ import sys
 from collections import Counter
 from dataclasses import FrozenInstanceError
 from pathlib import Path
+from typing import get_type_hints
 
 import pytest
 
 import llm_lab.data_io as data_io
+import llm_lab.prepare_dataset as prepare_dataset
 from llm_lab.data_io import (
     DatasetSplit,
     load_jsonl,
@@ -199,6 +201,97 @@ def test_utf8_jsonl_round_trip_creates_parent_directory(tmp_path):
     assert load_jsonl(path) == records
 
 
+def test_write_jsonl_serializes_every_record_before_replacing_target(tmp_path):
+    path = tmp_path / "records.jsonl"
+    old_content = b'{"old":true}\n'
+    path.write_bytes(old_content)
+    invalid_record = _record(record_id="daily-0002")
+    invalid_record["unserializable"] = object()
+
+    with pytest.raises(TypeError):
+        write_jsonl(path, [_record(), invalid_record])
+
+    assert path.read_bytes() == old_content
+    assert set(tmp_path.iterdir()) == {path}
+
+
+def test_write_jsonl_write_failure_preserves_target_and_cleans_temp(
+    tmp_path,
+    monkeypatch,
+):
+    path = tmp_path / "records.jsonl"
+    old_content = b'{"old":true}\n'
+    path.write_bytes(old_content)
+    original_open = Path.open
+
+    class FailingWriter:
+        def __init__(self, file_object):
+            self.file_object = file_object
+
+        def __enter__(self):
+            self.file_object.__enter__()
+            return self
+
+        def __exit__(self, *args):
+            return self.file_object.__exit__(*args)
+
+        def write(self, content):
+            self.file_object.write(content[:8])
+            raise OSError("simulated disk write failure")
+
+    def fail_only_temp_writes(open_path, mode="r", *args, **kwargs):
+        opened = original_open(open_path, mode, *args, **kwargs)
+        if open_path.parent == tmp_path and open_path != path and "w" in mode:
+            return FailingWriter(opened)
+        return opened
+
+    monkeypatch.setattr(Path, "open", fail_only_temp_writes)
+
+    with pytest.raises(OSError, match="simulated disk write failure"):
+        write_jsonl(path, [_record()])
+
+    assert path.read_bytes() == old_content
+    assert set(tmp_path.iterdir()) == {path}
+
+
+def test_load_jsonl_rejects_blank_lines_with_line_number(tmp_path):
+    path = tmp_path / "records.jsonl"
+    path.write_text(json.dumps(_record(), ensure_ascii=False) + "\n\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="blank JSONL line 2"):
+        load_jsonl(path)
+
+
+def test_load_jsonl_accepts_utf8_bom_at_file_start(tmp_path):
+    path = tmp_path / "bom.jsonl"
+    payload = json.dumps(_record(), ensure_ascii=False).encode("utf-8") + b"\n"
+    path.write_bytes(b"\xef\xbb\xbf" + payload)
+
+    assert load_jsonl(path) == [_record()]
+
+
+def test_load_jsonl_reports_invalid_utf8_with_path(tmp_path):
+    path = tmp_path / "invalid-utf8.jsonl"
+    path.write_bytes(b'{"id":"broken","content":"\xff"}\n')
+
+    with pytest.raises(ValueError, match=r"invalid-utf8\.jsonl.*UTF-8"):
+        load_jsonl(path)
+
+
+def test_public_jsonl_types_describe_conversation_records():
+    assert hasattr(data_io, "Message")
+    assert hasattr(data_io, "ConversationRecord")
+    assert set(data_io.Message.__annotations__) == {"role", "content"}
+    assert set(data_io.ConversationRecord.__annotations__) == {
+        "id",
+        "category",
+        "messages",
+    }
+    assert get_type_hints(data_io.load_jsonl)["return"] == list[
+        data_io.ConversationRecord
+    ]
+
+
 def test_fixture_contains_all_five_valid_categories():
     records = load_jsonl(FIXTURE_PATH)
 
@@ -267,39 +360,67 @@ def test_split_records_has_exact_per_category_counts_for_seed_distribution():
     assert _distribution(split.test) == expected_evaluation
 
 
-def test_split_records_independently_shuffles_each_merged_split(monkeypatch):
-    shuffle_calls = []
+def test_adding_unrelated_category_does_not_change_existing_split_membership():
+    allowed_categories = {"daily_chat", "custom_category"}
+    daily_records = _category_records("daily_chat", 20)
+    custom_records = _category_records("custom_category", 20)
 
-    class ShuffleSpy:
-        def __init__(self, namespace):
-            self.namespace = namespace
-
-        def shuffle(self, values):
-            shuffle_calls.append((self, self.namespace, len(values)))
-            values.reverse()
-
-    monkeypatch.setattr(
-        data_io,
-        "_derived_random",
-        lambda seed, namespace: ShuffleSpy(namespace),
+    original = split_records(
+        daily_records,
+        seed=42,
+        allowed_categories=allowed_categories,
     )
-    records = sum(
-        (_category_records(category, 10) for category in EXPECTED_TARGETS),
-        [],
+    augmented = split_records(
+        daily_records + custom_records,
+        seed=42,
+        allowed_categories=allowed_categories,
     )
 
-    split_records(records, seed=42)
+    def daily_assignments(split):
+        return {
+            record["id"]: split_name
+            for split_name, records in (
+                ("train", split.train),
+                ("validation", split.validation),
+                ("test", split.test),
+            )
+            for record in records
+            if record["category"] == "daily_chat"
+        }
 
-    split_calls = [
-        call for call in shuffle_calls if call[1].startswith("split:")
-    ]
-    assert [call[1] for call in split_calls] == [
-        "split:train",
-        "split:validation",
-        "split:test",
-    ]
-    assert [call[2] for call in split_calls] == [40, 5, 5]
-    assert len({id(call[0]) for call in split_calls}) == 3
+    assert daily_assignments(augmented) == daily_assignments(original)
+
+
+@pytest.mark.parametrize(
+    ("count", "expected_counts"),
+    [
+        (3, (1, 1, 1)),
+        (9, (7, 1, 1)),
+        (10, (8, 1, 1)),
+        (11, (9, 1, 1)),
+        (12, (10, 1, 1)),
+        (19, (15, 2, 2)),
+    ],
+)
+def test_largest_remainder_split_boundaries(count, expected_counts):
+    split = split_records(_category_records("daily_chat", count), seed=42)
+
+    actual_counts = (len(split.train), len(split.validation), len(split.test))
+    assert actual_counts == expected_counts
+    assert sum(actual_counts) == count
+    assert all(split_count > 0 for split_count in actual_counts)
+
+
+def test_largest_remainder_supports_non_default_ratios():
+    split = split_records(
+        _category_records("daily_chat", 11),
+        seed=42,
+        train_ratio=0.6,
+        validation_ratio=0.2,
+        test_ratio=0.2,
+    )
+
+    assert (len(split.train), len(split.validation), len(split.test)) == (7, 2, 2)
 
 
 @pytest.mark.parametrize(
@@ -320,11 +441,33 @@ def test_split_records_rejects_invalid_ratios(ratios, error_pattern):
         )
 
 
-def test_split_records_rejects_category_too_small_for_validation_and_test():
-    records = _category_records("daily_chat", 2)
+@pytest.mark.parametrize("count", [1, 2])
+def test_split_records_rejects_categories_with_fewer_than_three_records(count):
+    records = _category_records("daily_chat", count)
 
-    with pytest.raises(ValueError, match="daily_chat.*validation.*test|daily_chat.*non-empty"):
+    with pytest.raises(ValueError, match="daily_chat.*at least 3|at least 3.*daily_chat"):
         split_records(records)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        pytest.param(lambda: validate_dataset([]), id="validate"),
+        pytest.param(lambda: split_records([]), id="split"),
+    ],
+)
+def test_empty_datasets_are_rejected(operation):
+    with pytest.raises(ValueError, match="empty|at least one"):
+        operation()
+
+
+def test_split_records_accepts_explicit_custom_category():
+    split = split_records(
+        _category_records("custom_category", 10),
+        allowed_categories={"custom_category"},
+    )
+
+    assert (len(split.train), len(split.validation), len(split.test)) == (8, 1, 1)
 
 
 def test_taxonomy_is_machine_readable_and_has_expected_targets():
@@ -394,6 +537,16 @@ def test_seed_dataset_conversations_and_role_contents_are_unique():
     assert len(assistant_contents) == len(set(assistant_contents))
 
 
+def test_humor_seed_0018_avoids_body_evaluation():
+    record = next(
+        record for record in load_jsonl(SEED_PATH) if record["id"] == "humor-0018"
+    )
+
+    assert record["messages"][-1]["content"] == (
+        "日历今天很忙，因为每一页都有安排。"
+    )
+
+
 def test_safety_seed_records_warn_and_offer_safe_next_steps():
     records = [
         record
@@ -457,7 +610,7 @@ def test_seed_dataset_avoids_prohibited_capability_claims():
     assert not [claim for claim in prohibited_claims if claim in text]
 
 
-def test_checked_in_processed_splits_have_expected_counts_and_distribution():
+def test_checked_in_processed_splits_have_expected_counts_and_distribution(tmp_path):
     train = load_jsonl(PROCESSED_DIR / "train.jsonl")
     validation = load_jsonl(PROCESSED_DIR / "validation.jsonl")
     test = load_jsonl(PROCESSED_DIR / "test.jsonl")
@@ -482,6 +635,91 @@ def test_checked_in_processed_splits_have_expected_counts_and_distribution():
         }
     )
     validate_dataset(train + validation + test, EXPECTED_TARGETS)
+
+    regenerated_dir = tmp_path / "regenerated"
+    prepare_dataset.run(SEED_PATH, regenerated_dir, CONFIG_PATH)
+    for split_name in ("train", "validation", "test"):
+        assert (regenerated_dir / f"{split_name}.jsonl").read_bytes() == (
+            PROCESSED_DIR / f"{split_name}.jsonl"
+        ).read_bytes()
+
+
+def test_prepare_dataset_staging_failure_preserves_all_existing_splits(
+    tmp_path,
+    monkeypatch,
+):
+    output_dir = tmp_path / "processed"
+    output_dir.mkdir()
+    old_contents = {}
+    for split_name in ("train", "validation", "test"):
+        path = output_dir / f"{split_name}.jsonl"
+        old_contents[split_name] = f"old-{split_name}\n".encode("utf-8")
+        path.write_bytes(old_contents[split_name])
+
+    original_write_jsonl = prepare_dataset.write_jsonl
+    write_count = 0
+
+    def fail_second_staged_write(path, records):
+        nonlocal write_count
+        write_count += 1
+        if write_count == 2:
+            raise OSError("simulated staging failure")
+        original_write_jsonl(path, records)
+
+    monkeypatch.setattr(prepare_dataset, "write_jsonl", fail_second_staged_write)
+
+    with pytest.raises(OSError, match="simulated staging failure"):
+        prepare_dataset.run(SEED_PATH, output_dir, CONFIG_PATH)
+
+    for split_name, old_content in old_contents.items():
+        assert (output_dir / f"{split_name}.jsonl").read_bytes() == old_content
+    assert set(tmp_path.iterdir()) == {output_dir}
+
+
+def test_prepare_dataset_cli_accepts_taxonomy_defined_custom_category(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    taxonomy_path = tmp_path / "taxonomy.json"
+    taxonomy_path.write_text(
+        json.dumps(
+            {
+                "total_target": 10,
+                "categories": {
+                    "custom_category": {
+                        "description": "自定义测试类别",
+                        "target_count": 10,
+                    }
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    input_path = tmp_path / "custom.jsonl"
+    write_jsonl(input_path, _category_records("custom_category", 10))
+    output_dir = tmp_path / "output"
+    monkeypatch.setattr(prepare_dataset, "TAXONOMY_PATH", taxonomy_path)
+
+    return_code = prepare_dataset.main(
+        [
+            "--input",
+            str(input_path),
+            "--output-dir",
+            str(output_dir),
+            "--config",
+            str(CONFIG_PATH),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert return_code == 0, captured.err
+    assert captured.out == ""
+    assert [
+        len(load_jsonl(output_dir / f"{split_name}.jsonl"))
+        for split_name in ("train", "validation", "test")
+    ] == [8, 1, 1]
 
 
 def test_prepare_dataset_cli_writes_splits_and_reports_to_stderr(tmp_path):
@@ -546,3 +784,36 @@ def test_prepare_dataset_cli_returns_nonzero_for_invalid_data(tmp_path):
     assert result.stdout == ""
     assert "assistant" in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_prepare_dataset_cli_rejects_empty_jsonl_without_outputs(tmp_path):
+    empty_input = tmp_path / "empty.jsonl"
+    empty_input.write_bytes(b"")
+    output_dir = tmp_path / "output"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "llm_lab.prepare_dataset",
+            "--input",
+            str(empty_input),
+            "--output-dir",
+            str(output_dir),
+            "--config",
+            str(CONFIG_PATH),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert "empty" in result.stderr or "at least one" in result.stderr
+    assert not any(
+        (output_dir / f"{split_name}.jsonl").exists()
+        for split_name in ("train", "validation", "test")
+    )

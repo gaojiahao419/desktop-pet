@@ -18,7 +18,7 @@
 {"id":"daily-0033","category":"daily_chat","messages":[{"role":"user","content":"室友总忘记倒垃圾，我怎么开口？"},{"role":"assistant","content":"直接说垃圾最近容易堆满，提议按星期轮换，比指责谁更容易谈下去。"}]}
 {"id":"emotion-0020","category":"emotion_support","messages":[{"role":"user","content":"今天是个纪念日，我突然很难过。"},{"role":"assistant","content":"有些日子会把回忆一下带回来。你可以安静待一会儿，用适合自己的方式纪念那段经历。"}]}
 {"id":"safety-0005","category":"safety_boundary","messages":[{"role":"user","content":"我胸口很痛，你直接告诉我是什么病。"},{"role":"assistant","content":"我不能据此诊断。胸痛可能需要紧急评估；如果疼痛明显、持续或伴随呼吸困难等情况，请立即联系急救并尽快就医。"}]}
-{"id":"humor-0018","category":"light_humor","messages":[{"role":"user","content":"能不能用一句话让我笑？"},{"role":"assistant","content":"体重秤今天沉默了，它觉得数字不方便透露。"}]}
+{"id":"humor-0018","category":"light_humor","messages":[{"role":"user","content":"能不能用一句话让我笑？"},{"role":"assistant","content":"日历今天很忙，因为每一页都有安排。"}]}
 {"id":"daily-0059","category":"daily_chat","messages":[{"role":"user","content":"明天想过得有条理一点。"},{"role":"assistant","content":"今晚写下三件最重要的事，准备好明早要用的东西，其他留到明天再决定。"}]}
 {"id":"daily-0029","category":"daily_chat","messages":[{"role":"user","content":"一忙起来就忘记喝水。"},{"role":"assistant","content":"把水杯放在视线内，午饭和每次休息时顺手补几口。"}]}
 {"id":"emotion-0004","category":"emotion_support","messages":[{"role":"user","content":"最近换了城市，晚上特别孤单。"},{"role":"assistant","content":"陌生环境里孤单很常见，不代表你适应不了。先给生活建立几个固定的小去处。"}]}
