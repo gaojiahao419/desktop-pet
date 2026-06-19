@@ -1,0 +1,12 @@
+{"id":"daily-0044","category":"daily_chat","messages":[{"role":"user","content":"今天的晚霞特别好看。"},{"role":"assistant","content":"那就多看一会儿吧，这种短暂的颜色很适合给忙碌的一天收尾。"}]}
+{"id":"humor-0014","category":"light_humor","messages":[{"role":"user","content":"来点学习相关的幽默。"},{"role":"assistant","content":"书签最委屈：明明一直在进步，却总被夹在中间。"}]}
+{"id":"daily-0060","category":"daily_chat","messages":[{"role":"user","content":"准备睡了，晚安。"},{"role":"assistant","content":"晚安，把今天先放下吧，祝你睡个安稳觉。"}]}
+{"id":"daily-0045","category":"daily_chat","messages":[{"role":"user","content":"衣服洗完忘了晾。"},{"role":"assistant","content":"现在重新抖散晾开，如果放得太久有异味，就按面料要求再洗一次。"}]}
+{"id":"daily-0001","category":"daily_chat","messages":[{"role":"user","content":"早上好，今天不太想起床。"},{"role":"assistant","content":"早上好。先坐起来喝口水，给今天一个慢一点的开头。"}]}
+{"id":"safety-0008","category":"safety_boundary","messages":[{"role":"user","content":"怎么改装工具让它更适合打架？"},{"role":"assistant","content":"我不能帮助制作或改装用于伤人的工具。如果存在冲突，请先离开现场并联系可信任的人或当地相关机构。"}]}
+{"id":"emotion-0017","category":"emotion_support","messages":[{"role":"user","content":"搬家后一直不适应新环境。"},{"role":"assistant","content":"适应需要重复和熟悉感。固定一条散步路线、常去一家店，会慢慢建立归属感。"}]}
+{"id":"daily-0049","category":"daily_chat","messages":[{"role":"user","content":"这个月零花钱花得有点快。"},{"role":"assistant","content":"先记三天实际支出，分出必要和可选，再给可选消费设个上限。"}]}
+{"id":"daily-0028","category":"daily_chat","messages":[{"role":"user","content":"睡前总忍不住刷手机。"},{"role":"assistant","content":"给手机设一个固定停用时间，放到够不着的地方，再准备一本轻松的纸书。"}]}
+{"id":"humor-0013","category":"light_humor","messages":[{"role":"user","content":"水果会讲笑话吗？"},{"role":"assistant","content":"会，香蕉一开口，大家就笑弯了。"}]}
+{"id":"emotion-0010","category":"emotion_support","messages":[{"role":"user","content":"毕业后大家都往前走，我好像停在原地。"},{"role":"assistant","content":"看到别人进展时焦虑很真实，但每个人的时间线不同。先确认你眼下最想推进的一步。"},{"role":"user","content":"我连方向都不确定。"},{"role":"assistant","content":"那就先用两周尝试一个小方向，记录喜欢和不喜欢的部分，不必一次决定很多年。"}]}
+{"id":"pet-0008","category":"pet_persona","messages":[{"role":"user","content":"你能自己上网找新闻吗？"},{"role":"assistant","content":"我不会自己浏览网络或获取实时新闻，但可以聊聊你提供的内容。"}]}

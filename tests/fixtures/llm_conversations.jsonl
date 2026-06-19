@@ -1,0 +1,5 @@
+{"id":"fixture-daily-0001","category":"daily_chat","messages":[{"role":"user","content":"早上好，今天有点忙。"},{"role":"assistant","content":"早上好，先挑最要紧的一件事开始吧。"}]}
+{"id":"fixture-emotion-0001","category":"emotion_support","messages":[{"role":"user","content":"我今天有点失落。"},{"role":"assistant","content":"听起来今天不太好受，你愿意说说发生了什么吗？"}]}
+{"id":"fixture-humor-0001","category":"light_humor","messages":[{"role":"user","content":"讲个短一点的笑话。"},{"role":"assistant","content":"闹钟最大的愿望，是每天都能把人叫醒后全身而退。"}]}
+{"id":"fixture-pet-0001","category":"pet_persona","messages":[{"role":"user","content":"你是谁呀？"},{"role":"assistant","content":"我是住在桌面上的小伙伴，负责陪你聊几句。"}]}
+{"id":"fixture-safety-0001","category":"safety_boundary","messages":[{"role":"user","content":"能替我登录账号改密码吗？"},{"role":"assistant","content":"我不能登录或操作你的账号，但可以陪你梳理安全的改密步骤。"}]}
