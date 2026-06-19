@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import llm_lab.data_io as data_io
 from llm_lab.data_io import (
     DatasetSplit,
     load_jsonl,
@@ -27,11 +28,11 @@ PROCESSED_DIR = ROOT / "llm_lab" / "data" / "processed"
 CONFIG_PATH = ROOT / "llm_lab" / "configs" / "qwen3_1_7b_qlora.json"
 
 EXPECTED_TARGETS = {
-    "daily_chat": 300,
-    "emotion_support": 100,
-    "light_humor": 100,
-    "pet_persona": 50,
-    "safety_boundary": 50,
+    "daily_chat": 600,
+    "emotion_support": 200,
+    "light_humor": 200,
+    "pet_persona": 100,
+    "safety_boundary": 100,
 }
 EXPECTED_SEED_COUNTS = {
     "daily_chat": 60,
@@ -88,6 +89,20 @@ def test_validate_record_accepts_valid_alternating_conversation():
     )
 
     assert validate_record(record, EXPECTED_TARGETS) is None
+
+
+@pytest.mark.parametrize(
+    "validator",
+    [
+        pytest.param(lambda record: validate_record(record), id="record"),
+        pytest.param(lambda record: validate_dataset([record]), id="dataset"),
+    ],
+)
+def test_default_validation_rejects_unknown_categories(validator):
+    record = _record(category="unknown")
+
+    with pytest.raises(ValueError, match="unknown category"):
+        validator(record)
 
 
 @pytest.mark.parametrize(
@@ -218,6 +233,75 @@ def test_split_records_stratifies_twenty_records_as_16_2_2():
     assert all(record["category"] == "daily_chat" for record in split.train)
 
 
+def test_split_records_has_exact_per_category_counts_for_seed_distribution():
+    records = sum(
+        (
+            _category_records(category, count)
+            for category, count in EXPECTED_SEED_COUNTS.items()
+        ),
+        [],
+    )
+
+    split = split_records(records, seed=42)
+
+    assert [len(split.train), len(split.validation), len(split.test)] == [96, 12, 12]
+    assert _distribution(split.train) == Counter(
+        {
+            "daily_chat": 48,
+            "emotion_support": 16,
+            "light_humor": 16,
+            "pet_persona": 8,
+            "safety_boundary": 8,
+        }
+    )
+    expected_evaluation = Counter(
+        {
+            "daily_chat": 6,
+            "emotion_support": 2,
+            "light_humor": 2,
+            "pet_persona": 1,
+            "safety_boundary": 1,
+        }
+    )
+    assert _distribution(split.validation) == expected_evaluation
+    assert _distribution(split.test) == expected_evaluation
+
+
+def test_split_records_independently_shuffles_each_merged_split(monkeypatch):
+    shuffle_calls = []
+
+    class ShuffleSpy:
+        def __init__(self, namespace):
+            self.namespace = namespace
+
+        def shuffle(self, values):
+            shuffle_calls.append((self, self.namespace, len(values)))
+            values.reverse()
+
+    monkeypatch.setattr(
+        data_io,
+        "_derived_random",
+        lambda seed, namespace: ShuffleSpy(namespace),
+    )
+    records = sum(
+        (_category_records(category, 10) for category in EXPECTED_TARGETS),
+        [],
+    )
+
+    split_records(records, seed=42)
+
+    split_calls = [
+        call for call in shuffle_calls if call[1].startswith("split:")
+    ]
+    assert [call[1] for call in split_calls] == [
+        "split:train",
+        "split:validation",
+        "split:test",
+    ]
+    assert [call[2] for call in split_calls] == [40, 5, 5]
+    assert len({id(call[0]) for call in split_calls}) == 3
+
+
 @pytest.mark.parametrize(
     ("ratios", "error_pattern"),
     [
@@ -247,7 +331,7 @@ def test_taxonomy_is_machine_readable_and_has_expected_targets():
     taxonomy = json.loads(TAXONOMY_PATH.read_text(encoding="utf-8"))
 
     assert isinstance(taxonomy, dict)
-    assert taxonomy["total_target"] == 600
+    assert taxonomy["total_target"] == 1200
     assert set(taxonomy["categories"]) == set(EXPECTED_TARGETS)
     for category, target_count in EXPECTED_TARGETS.items():
         definition = taxonomy["categories"][category]
@@ -282,6 +366,72 @@ def test_seed_dataset_has_exact_counts_valid_format_and_unique_content():
         assert all(
             message["content"] == message["content"].strip()
             for message in record["messages"]
+        )
+
+
+def test_seed_dataset_conversations_and_role_contents_are_unique():
+    records = load_jsonl(SEED_PATH)
+    conversations = [
+        tuple((message["role"], message["content"]) for message in record["messages"])
+        for record in records
+    ]
+    user_contents = [
+        message["content"]
+        for record in records
+        for message in record["messages"]
+        if message["role"] == "user"
+    ]
+    assistant_contents = [
+        message["content"]
+        for record in records
+        for message in record["messages"]
+        if message["role"] == "assistant"
+    ]
+
+    assert len(records) == 120
+    assert len(conversations) == len(set(conversations))
+    assert len(user_contents) == len(set(user_contents))
+    assert len(assistant_contents) == len(set(assistant_contents))
+
+
+def test_safety_seed_records_warn_and_offer_safe_next_steps():
+    records = [
+        record
+        for record in load_jsonl(SEED_PATH)
+        if record["category"] == "safety_boundary"
+    ]
+    warning_keywords = (
+        "不能",
+        "不要",
+        "危险",
+        "风险",
+        "紧急",
+        "不安全",
+    )
+    safe_step_keywords = (
+        "请",
+        "联系",
+        "求助",
+        "选择",
+        "改乘",
+        "远离",
+        "就医",
+        "撤离",
+        "核实",
+    )
+
+    assert len(records) == 10
+    for record in records:
+        assistant_text = "\n".join(
+            message["content"]
+            for message in record["messages"]
+            if message["role"] == "assistant"
+        )
+        assert any(keyword in assistant_text for keyword in warning_keywords), (
+            f"{record['id']}: assistant must state a refusal or risk warning"
+        )
+        assert any(keyword in assistant_text for keyword in safe_step_keywords), (
+            f"{record['id']}: assistant must offer a safe alternative or help step"
         )
 
 

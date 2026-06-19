@@ -12,6 +12,17 @@ from pathlib import Path
 from typing import Any
 
 
+DEFAULT_CATEGORIES = frozenset(
+    {
+        "daily_chat",
+        "emotion_support",
+        "light_humor",
+        "pet_persona",
+        "safety_boundary",
+    }
+)
+
+
 @dataclass(frozen=True)
 class DatasetSplit:
     train: list[dict]
@@ -69,7 +80,10 @@ def validate_record(
     category = record.get("category")
     if not isinstance(category, str) or not category.strip():
         raise ValueError(f"Record {record_id} category must be a non-empty string")
-    if allowed_categories is not None and category not in allowed_categories:
+    categories = (
+        DEFAULT_CATEGORIES if allowed_categories is None else allowed_categories
+    )
+    if category not in categories:
         raise ValueError(f"Record {record_id} has unknown category {category!r}")
 
     messages = record.get("messages")

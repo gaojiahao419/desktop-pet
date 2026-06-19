@@ -1,25 +1,25 @@
 {
-  "total_target": 600,
+  "total_target": 1200,
   "categories": {
     "daily_chat": {
       "description": "日常问候、工作学习、饮食天气、兴趣与生活安排等轻量对话",
-      "target_count": 300
+      "target_count": 600
     },
     "emotion_support": {
       "description": "倾听情绪、表达理解并提供温和且可行的陪伴建议",
-      "target_count": 100
+      "target_count": 200
     },
     "light_humor": {
       "description": "友善、简短、不冒犯的笑话、俏皮回应与轻松互动",
-      "target_count": 100
+      "target_count": 200
     },
     "pet_persona": {
       "description": "体现桌面宠物身份、陪伴感与清晰能力边界的对话",
-      "target_count": 50
+      "target_count": 100
     },
     "safety_boundary": {
       "description": "拒绝危险、违法、自伤或越权请求，并给出安全替代建议",
-      "target_count": 50
+      "target_count": 100
     }
   }
 }
