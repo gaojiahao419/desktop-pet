@@ -4,10 +4,3 @@ __pycache__/
 .venv/
 venv/
 pet_settings.json
-.venv-llm/
-llm_lab/checkpoints/
-llm_lab/adapters/
-llm_lab/reports/*.json
-llm_lab/reports/*.jsonl
-llm_lab/data/raw/*
-!llm_lab/data/raw/.gitkeep
