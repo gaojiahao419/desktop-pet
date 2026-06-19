@@ -1,5 +1,6 @@
 import json
-from dataclasses import FrozenInstanceError
+import math
+from dataclasses import FrozenInstanceError, asdict
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,41 @@ EXPECTED_CONFIG = {
     "top_k": 20,
 }
 
+STRICT_INT_FIELDS = (
+    "seed",
+    "lora_r",
+    "lora_alpha",
+    "max_seq_length",
+    "per_device_train_batch_size",
+    "gradient_accumulation_steps",
+    "num_train_epochs",
+    "max_new_tokens",
+    "top_k",
+)
+
+BOOL_FIELDS = ("load_in_4bit", "double_quant", "enable_thinking")
+
+STRING_FIELDS = (
+    "model_id",
+    "output_dir",
+    "train_file",
+    "validation_file",
+    "test_file",
+    "quant_type",
+    "compute_dtype",
+    "target_modules",
+)
+
+FLOAT_FIELDS = (
+    "train_ratio",
+    "validation_ratio",
+    "test_ratio",
+    "lora_dropout",
+    "learning_rate",
+    "temperature",
+    "top_p",
+)
+
 
 def test_checked_in_config_matches_v1_design():
     config = load_training_config(CONFIG_PATH)
@@ -63,11 +99,61 @@ def test_checked_in_config_has_exact_v1_content_and_json_types():
     )
 
 
+def test_default_config_matches_all_checked_in_v1_values():
+    with CONFIG_PATH.open(encoding="utf-8") as config_file:
+        raw_config = json.load(config_file)
+
+    typed_fields = STRICT_INT_FIELDS + BOOL_FIELDS + STRING_FIELDS + FLOAT_FIELDS
+    assert len(typed_fields) == len(set(typed_fields)) == 27
+    assert set(typed_fields) == set(raw_config)
+    assert asdict(TrainingConfig()) == raw_config
+
+
 def test_training_config_is_frozen():
     config = TrainingConfig()
 
     with pytest.raises(FrozenInstanceError):
         config.model_id = "another-model"
+
+
+@pytest.mark.parametrize("field_name", STRICT_INT_FIELDS)
+@pytest.mark.parametrize("invalid_value", [True, 1.5])
+def test_integer_fields_require_exact_int_type(field_name, invalid_value):
+    with pytest.raises(TypeError, match=field_name):
+        TrainingConfig(**{field_name: invalid_value})
+
+
+@pytest.mark.parametrize("field_name", BOOL_FIELDS)
+@pytest.mark.parametrize("invalid_value", [1, "true"])
+def test_boolean_fields_require_exact_bool_type(field_name, invalid_value):
+    with pytest.raises(TypeError, match=field_name):
+        TrainingConfig(**{field_name: invalid_value})
+
+
+@pytest.mark.parametrize("field_name", STRING_FIELDS)
+def test_string_fields_reject_non_string_values(field_name):
+    with pytest.raises(TypeError, match=field_name):
+        TrainingConfig(**{field_name: True})
+
+
+@pytest.mark.parametrize("field_name", STRING_FIELDS)
+def test_string_fields_reject_empty_values(field_name):
+    with pytest.raises(ValueError, match=field_name):
+        TrainingConfig(**{field_name: ""})
+
+
+@pytest.mark.parametrize("field_name", FLOAT_FIELDS)
+@pytest.mark.parametrize("invalid_value", [True, "0.1"])
+def test_float_fields_require_real_number_types(field_name, invalid_value):
+    with pytest.raises(TypeError, match=field_name):
+        TrainingConfig(**{field_name: invalid_value})
+
+
+@pytest.mark.parametrize("field_name", FLOAT_FIELDS)
+@pytest.mark.parametrize("invalid_value", [math.nan, math.inf, -math.inf])
+def test_float_fields_reject_non_finite_values(field_name, invalid_value):
+    with pytest.raises(ValueError, match=rf"{field_name}.*finite"):
+        TrainingConfig(**{field_name: invalid_value})
 
 
 def test_invalid_split_is_rejected():
@@ -159,8 +245,25 @@ def test_invalid_json_has_clear_error(tmp_path):
     config_path.write_text("{not-json", encoding="utf-8")
 
     error_pattern = r"Invalid JSON in training config .*invalid\.json"
-    with pytest.raises(ValueError, match=error_pattern):
+    with pytest.raises(json.JSONDecodeError, match=error_pattern) as exc_info:
         load_training_config(config_path)
+
+    assert exc_info.value.lineno == 1
+    assert exc_info.value.colno > 0
+    assert isinstance(exc_info.value.__cause__, json.JSONDecodeError)
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_non_finite_json_numbers_are_rejected(tmp_path, constant):
+    config_path = tmp_path / "non-finite.json"
+    config_path.write_text(
+        f'{{"learning_rate": {constant}}}', encoding="utf-8"
+    )
+
+    with pytest.raises(json.JSONDecodeError, match="non-finite") as exc_info:
+        load_training_config(config_path)
+
+    assert isinstance(exc_info.value.__cause__, json.JSONDecodeError)
 
 
 def test_json_root_must_be_an_object(tmp_path):

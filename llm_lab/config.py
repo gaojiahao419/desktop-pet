@@ -1,7 +1,15 @@
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
+
+
+def _reject_json_constant(constant: str) -> None:
+    raise json.JSONDecodeError(
+        f"non-finite numeric value {constant} is not permitted",
+        constant,
+        0,
+    )
 
 
 @dataclass(frozen=True)
@@ -35,6 +43,33 @@ class TrainingConfig:
     top_k: int = 20
 
     def __post_init__(self) -> None:
+        for config_field in fields(self):
+            value = getattr(self, config_field.name)
+            if config_field.type is int:
+                if type(value) is not int:
+                    raise TypeError(f"{config_field.name} must be an int")
+            elif config_field.type is bool:
+                if type(value) is not bool:
+                    raise TypeError(f"{config_field.name} must be a bool")
+            elif config_field.type is str:
+                if type(value) is not str:
+                    raise TypeError(f"{config_field.name} must be a string")
+                if not value.strip():
+                    raise ValueError(
+                        f"{config_field.name} must be a non-empty string"
+                    )
+            elif config_field.type is float:
+                if type(value) not in {int, float}:
+                    raise TypeError(
+                        f"{config_field.name} must be an int or float"
+                    )
+                if not math.isfinite(value):
+                    raise ValueError(f"{config_field.name} must be finite")
+            else:
+                raise TypeError(
+                    f"Unsupported type annotation for {config_field.name}"
+                )
+
         split_ratios = (self.train_ratio, self.validation_ratio, self.test_ratio)
         if any(ratio <= 0 for ratio in split_ratios) or not math.isclose(
             sum(split_ratios), 1.0, rel_tol=1e-9, abs_tol=1e-9
@@ -75,7 +110,10 @@ def load_training_config(path: Path) -> TrainingConfig:
     config_path = Path(path)
     try:
         with config_path.open(encoding="utf-8") as config_file:
-            raw_config = json.load(config_file)
+            raw_config = json.load(
+                config_file,
+                parse_constant=_reject_json_constant,
+            )
     except FileNotFoundError as exc:
         raise FileNotFoundError(
             f"Training config file not found: {config_path}"
