@@ -1,5 +1,6 @@
 from pet_animator import PetFrame
 from pet_renderer import PetRenderer
+from PIL import Image
 
 
 def test_renderer_returns_transparent_rgba_image():
@@ -22,4 +23,14 @@ def test_renderer_can_draw_speech_bubble():
     renderer = PetRenderer()
     frame = PetFrame("talk", 1, 0, False, True, 0)
     image = renderer.render(frame, speech_text="你好")
+    assert image.getbbox() is not None
+
+
+def test_renderer_can_overlay_speech_bubble_on_uploaded_video_frame():
+    renderer = PetRenderer()
+    video_frame = Image.new("RGBA", (160, 120), (0, 0, 0, 0))
+
+    image = renderer.with_speech_bubble(video_frame, "hello")
+
+    assert image.size == video_frame.size
     assert image.getbbox() is not None

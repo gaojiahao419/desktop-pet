@@ -4,4 +4,3 @@ pytest
 imageio
 imageio-ffmpeg
 numpy
-scipy

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>桌面宠物控制台</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>桌面宠物控制台</h1>
+        </div>
+        <div class="topbar-actions">
+          <div class="theme-picker" aria-label="控制台配色方案">
+            <span class="theme-label">风格</span>
+            <button class="theme-chip" data-theme-option="obsidian" type="button">
+              <span class="swatch"></span>
+              曜石橙
+            </button>
+            <button class="theme-chip" data-theme-option="bluegray" type="button">
+              <span class="swatch"></span>
+              白蓝灰
+            </button>
+          </div>
+          <span id="connectionStatus" class="connection">正在连接 Python</span>
+          <button id="quitButton" class="danger-button" type="button">退出程序</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="panel material-panel">
+          <div class="section-head">
+            <h2>动作素材</h2>
+            <p>给待机、开心、生气分别绑定透明 MP4。</p>
+          </div>
+          <div id="materialList" class="material-list"></div>
+        </aside>
+
+        <section class="stage-panel">
+          <div class="stage-card">
+            <div class="section-head stage-head">
+              <div>
+                <h2>宠物预览</h2>
+                <p id="previewMeta">上传素材后显示首帧预览</p>
+              </div>
+              <span id="previewState" class="state-pill">未选择</span>
+            </div>
+            <div id="previewBox" class="preview-box">
+              <span id="previewMessage">上传素材后显示首帧预览</span>
+              <img id="previewImage" alt="宠物素材预览" hidden />
+            </div>
+            <div class="preview-toolbar">
+              <span id="previewFrameLabel">当前帧：0 / 0</span>
+              <div class="toolbar-actions">
+                <button id="playPreviewButton" class="primary-button" type="button">播放</button>
+                <button id="pausePreviewButton" class="light-button" type="button">暂停</button>
+                <button id="syncPreviewButton" class="ghost-button" type="button">同步预览</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="panel inspector-panel">
+          <section class="inspector-card">
+            <h2>素材设置</h2>
+            <label class="switch-row">
+              <input id="blackBackgroundToggle" type="checkbox" />
+              <span class="switch-ui"></span>
+              <span>
+                <strong>黑底透明</strong>
+                <small>仅用于普通黑底 MP4。</small>
+              </span>
+            </label>
+          </section>
+
+          <section class="inspector-card">
+            <h2>动作控制</h2>
+            <div id="actionGrid" class="action-grid"></div>
+          </section>
+
+          <section class="inspector-card">
+            <h2>对话</h2>
+            <textarea id="dialogueInput" rows="4" placeholder="输入要说的话或聊天内容"></textarea>
+            <div class="dialogue-actions">
+              <button id="sayButton" class="primary-button" type="button">说话</button>
+              <button id="chatButton" class="light-button" type="button">聊天</button>
+            </div>
+          </section>
+        </aside>
+      </section>
+
+      <footer id="statusBar" class="status-bar">状态：使用内置绘制宠物</footer>
+    </main>
+
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

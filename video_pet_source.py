@@ -1,218 +1,199 @@
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Sequence
 
+import imageio
 import imageio.v3 as iio
 import numpy as np
 from PIL import Image
 
-try:
-    from scipy import ndimage
-except ImportError:  # pragma: no cover - optional quality improvement
-    ndimage = None
 
-
-Color = Tuple[int, int, int]
-DEFAULT_BACKGROUND_COLOR: Color = (0, 255, 0)
-HAS_SCIPY = ndimage is not None
+BLACK_BACKGROUND_THRESHOLD = 24
+DEFAULT_VIDEO_FPS = 30.0
+MAX_PLAYBACK_FPS = 30.0
+MIN_PLAYBACK_SPEED = 0.25
+MAX_PLAYBACK_SPEED = 3.0
+LOOP_MODE_LOOP = "loop"
+LOOP_MODE_ONCE = "once"
+VALID_LOOP_MODES = {LOOP_MODE_LOOP, LOOP_MODE_ONCE}
 
 
 def clamp_scale(value: float) -> float:
-    return max(0.5, min(2.5, float(value)))
+    return max(0.0, min(2.5, float(value)))
 
 
-def clamp_tolerance(value: int) -> int:
-    return max(0, min(120, int(value)))
+def clamp_playback_speed(value: float) -> float:
+    try:
+        speed = float(value)
+    except (TypeError, ValueError):
+        return 1.0
+    if not np.isfinite(speed):
+        return 1.0
+    return max(MIN_PLAYBACK_SPEED, min(MAX_PLAYBACK_SPEED, speed))
 
 
-def detect_background_color(frame: np.ndarray) -> Color:
-    array = np.asarray(frame, dtype=np.uint8)
-    if array.ndim != 3 or array.shape[2] < 3:
-        raise ValueError(f"Unsupported video frame shape: {array.shape}")
-
-    height, width = array.shape[:2]
-    patch = max(1, min(width, height) // 20)
-    rgb = array[:, :, :3]
-    corners = [
-        rgb[:patch, :patch],
-        rgb[:patch, -patch:],
-        rgb[-patch:, :patch],
-        rgb[-patch:, -patch:],
-    ]
-    pixels = np.concatenate([corner.reshape(-1, 3) for corner in corners], axis=0)
-    color = np.median(pixels, axis=0).astype(np.uint8)
-    return tuple(int(value) for value in color)
+def normalize_loop_mode(value: str) -> str:
+    if value in VALID_LOOP_MODES:
+        return value
+    return LOOP_MODE_LOOP
 
 
-def resolve_background_color(frame: np.ndarray, background_color: Color) -> Color:
-    requested = tuple(int(value) for value in background_color)
-    detected = detect_background_color(frame)
-    if requested != DEFAULT_BACKGROUND_COLOR:
-        return requested
+def normalize_fps(value: float) -> float:
+    try:
+        fps = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_VIDEO_FPS
+    if not np.isfinite(fps) or fps <= 0:
+        return DEFAULT_VIDEO_FPS
+    return max(1.0, min(120.0, fps))
 
-    distance = max(abs(detected[index] - requested[index]) for index in range(3))
-    if distance > 80:
-        return detected
-    return requested
+
+def playback_frame_stride(fps: float, max_playback_fps: float = MAX_PLAYBACK_FPS) -> int:
+    max_fps = normalize_fps(max_playback_fps)
+    return max(1, int(round(normalize_fps(fps) / max_fps)))
+
+
+def sampled_video_fps(fps: float, stride: int) -> float:
+    return normalize_fps(fps) / max(1, int(stride))
+
+
+def playback_interval_ms(fps: float, playback_speed: float = 1.0) -> int:
+    effective_fps = normalize_fps(fps) * clamp_playback_speed(playback_speed)
+    return max(8, int(round(1000 / effective_fps)))
+
+
+def read_video_fps(path: Path) -> float:
+    reader = None
+    try:
+        reader = imageio.get_reader(path)
+        metadata = reader.get_meta_data()
+        return normalize_fps(metadata.get("fps"))
+    except Exception:
+        return DEFAULT_VIDEO_FPS
+    finally:
+        if reader is not None:
+            reader.close()
+
+
+def black_background_mask(black_mask: np.ndarray) -> np.ndarray:
+    if black_mask.ndim != 2:
+        raise ValueError("black_background_mask requires a 2D mask")
+
+    height, width = black_mask.shape
+    if height == 0 or width == 0:
+        return np.zeros(black_mask.shape, dtype=bool)
+
+    foreground = ~black_mask
+    rows_with_foreground = foreground.any(axis=1)
+    left = np.argmax(foreground, axis=1)
+    right = width - 1 - np.argmax(foreground[:, ::-1], axis=1)
+    left = np.where(rows_with_foreground, left, width)
+    right = np.where(rows_with_foreground, right, -1)
+
+    columns_with_foreground = foreground.any(axis=0)
+    top = np.argmax(foreground, axis=0)
+    bottom = height - 1 - np.argmax(foreground[::-1, :], axis=0)
+    top = np.where(columns_with_foreground, top, height)
+    bottom = np.where(columns_with_foreground, bottom, -1)
+
+    x = np.arange(width)[None, :]
+    y = np.arange(height)[:, None]
+    outside_row_span = (x < left[:, None]) | (x > right[:, None])
+    outside_column_span = (y < top[None, :]) | (y > bottom[None, :])
+    return black_mask & (outside_row_span | outside_column_span)
 
 
 def frame_to_rgba_image(
     frame: np.ndarray,
-    background_color: Color,
-    tolerance: int,
-    feather: int = 35,
+    black_background_transparent: bool = False,
+    black_threshold: int = BLACK_BACKGROUND_THRESHOLD,
 ) -> Image.Image:
     array = np.asarray(frame, dtype=np.uint8)
     if array.ndim != 3 or array.shape[2] not in (3, 4):
         raise ValueError(f"Unsupported video frame shape: {array.shape}")
-
-    if array.shape[2] == 4:
-        return Image.fromarray(array).convert("RGBA")
-
-    rgb = array[:, :, :3].astype(np.float32)
-    bg = np.array(background_color, dtype=np.float32)
-    distance = np.max(np.abs(rgb - bg), axis=2)
-    tolerance = clamp_tolerance(tolerance)
-    feather = max(1, int(feather))
-
-    alpha = np.clip((distance - tolerance) * 255 / feather, 0, 255).astype(np.uint8)
-    alpha_float = alpha.astype(np.float32) / 255
-    edge = (alpha > 0) & (alpha < 255)
-    corrected = rgb.copy()
-    if np.any(edge):
-        corrected[edge] = (rgb[edge] - bg * (1 - alpha_float[edge, None])) / alpha_float[edge, None]
-        corrected = np.clip(corrected, 0, 255)
-
-    rgba = np.dstack((corrected.astype(np.uint8), alpha))
-    rgba = clean_foreground_artifacts(rgba)
-    return Image.fromarray(rgba).convert("RGBA")
-
-
-def clean_foreground_artifacts(rgba: np.ndarray) -> np.ndarray:
-    if ndimage is None:
-        return rgba
-
-    cleaned = rgba.copy()
-    alpha = cleaned[:, :, 3]
-    if alpha.size < 4096:
-        return cleaned
-
-    mask = alpha > 8
-    if not np.any(mask):
-        return cleaned
-
-    rgb = cleaned[:, :, :3].astype(np.float32)
-    inside_distance = ndimage.distance_transform_edt(mask)
-    max_channel = rgb.max(axis=2)
-    min_channel = rgb.min(axis=2)
-    saturation = np.zeros_like(max_channel)
-    nonzero = max_channel > 0
-    saturation[nonzero] = (max_channel[nonzero] - min_channel[nonzero]) / max_channel[nonzero]
-
-    red = rgb[:, :, 0]
-    green = rgb[:, :, 1]
-    blue = rgb[:, :, 2]
-    warm_artifact_color = ((red > 130) & (green > 80) & (blue < 120)) | (
-        (red > 130) & (green < 120) & (blue < 120)
-    )
-    artifact = mask & (inside_distance < 22) & (saturation > 0.45) & warm_artifact_color
-    alpha = np.where(artifact, 0, alpha).astype(np.uint8)
-
-    mask = alpha > 8
-    labels, count = ndimage.label(mask)
-    if count:
-        sizes = np.bincount(labels.ravel())
-        sizes[0] = 0
-        min_area = max(1, int(mask.size * 0.0002))
-        keep_labels = np.flatnonzero(sizes >= min_area)
-        keep = np.isin(labels, keep_labels)
-        alpha = np.where(keep, alpha, 0).astype(np.uint8)
-
-    cleaned[:, :, 3] = alpha
-    return cleaned
-
-
-def filter_outlier_frames(frames: Sequence[Image.Image]) -> List[Image.Image]:
-    if len(frames) < 4:
-        return list(frames)
-
-    areas = []
-    for frame in frames:
-        alpha = np.asarray(frame.convert("RGBA"))[:, :, 3]
-        areas.append(int((alpha > 8).sum()))
-
-    median_area = float(np.median(areas))
-    if median_area <= 0:
-        return list(frames)
-
-    filtered = [frame for frame, area in zip(frames, areas) if area <= median_area * 1.25]
-    return filtered or list(frames)
-
-
-def crop_frames_to_content(frames: Sequence[Image.Image]) -> List[Image.Image]:
-    boxes = [frame.convert("RGBA").getbbox() for frame in frames]
-    boxes = [box for box in boxes if box is not None]
-    if not boxes:
-        return [frame.convert("RGBA") for frame in frames]
-
-    left = min(box[0] for box in boxes)
-    top = min(box[1] for box in boxes)
-    right = max(box[2] for box in boxes)
-    bottom = max(box[3] for box in boxes)
-    crop_box = (left, top, right, bottom)
-    return [frame.convert("RGBA").crop(crop_box) for frame in frames]
+    if black_background_transparent and array.shape[2] == 3:
+        rgb = array[:, :, :3]
+        black_mask = np.max(rgb, axis=2) <= int(black_threshold)
+        background_mask = black_background_mask(black_mask)
+        alpha = np.where(background_mask, 0, 255).astype(np.uint8)
+        return Image.fromarray(np.dstack((rgb, alpha))).convert("RGBA")
+    return Image.fromarray(array).convert("RGBA")
 
 
 class VideoPetSource:
-    def __init__(self, frames: Sequence[Image.Image], source_path: str = "") -> None:
+    def __init__(
+        self,
+        frames: Sequence[Image.Image],
+        source_path: str = "",
+        fps: float = DEFAULT_VIDEO_FPS,
+    ) -> None:
         if not frames:
             raise ValueError("Video source requires at least one frame")
         self.frames: List[Image.Image] = [frame.convert("RGBA") for frame in frames]
         self.size = self.frames[0].size
+        self.has_transparency = any(frame.getextrema()[3][0] < 255 for frame in self.frames)
         self.source_path = source_path
+        self.fps = normalize_fps(fps)
         self.index = 0
 
     @classmethod
     def from_path(
         cls,
         path: str,
-        background_color: Color = DEFAULT_BACKGROUND_COLOR,
-        tolerance: int = 35,
+        black_background_transparent: bool = False,
         max_frames: int = 600,
+        max_playback_fps: float = MAX_PLAYBACK_FPS,
     ) -> "VideoPetSource":
         video_path = Path(path)
         if video_path.suffix.lower() != ".mp4":
-            raise ValueError("请选择 MP4 文件")
+            raise ValueError("Please choose an MP4 file")
 
+        source_fps = read_video_fps(video_path)
+        stride = playback_frame_stride(source_fps, max_playback_fps)
         frames = []
-        key_color = None
-        for frame in iio.imiter(video_path):
-            if key_color is None:
-                key_color = resolve_background_color(frame, background_color)
-            frames.append(frame_to_rgba_image(frame, key_color, tolerance))
+        for frame_index, frame in enumerate(iio.imiter(video_path)):
+            if frame_index % stride != 0:
+                continue
+            frames.append(
+                frame_to_rgba_image(
+                    frame,
+                    black_background_transparent=black_background_transparent,
+                )
+            )
             if len(frames) >= max_frames:
                 break
 
         if not frames:
-            raise ValueError("无法读取视频帧")
-        frames = filter_outlier_frames(frames)
-        frames = crop_frames_to_content(frames)
-        return cls(frames, source_path=str(video_path))
+            raise ValueError("Could not read any video frames")
+        return cls(frames, source_path=str(video_path), fps=sampled_video_fps(source_fps, stride))
 
     @classmethod
     def from_arrays(
         cls,
         frames: Iterable[np.ndarray],
-        background_color: Color = DEFAULT_BACKGROUND_COLOR,
-        tolerance: int = 35,
+        black_background_transparent: bool = False,
+        fps: float = DEFAULT_VIDEO_FPS,
     ) -> "VideoPetSource":
-        images = [frame_to_rgba_image(frame, background_color, tolerance) for frame in frames]
-        return cls(crop_frames_to_content(images))
+        images = [
+            frame_to_rgba_image(frame, black_background_transparent=black_background_transparent)
+            for frame in frames
+        ]
+        return cls(images, fps=fps)
 
-    def next_frame(self) -> Image.Image:
-        frame = self.frames[self.next_frame_index()]
+    def frame_interval_ms(self, playback_speed: float = 1.0) -> int:
+        return playback_interval_ms(self.fps, playback_speed=playback_speed)
+
+    def next_frame(self, loop_mode: str = LOOP_MODE_LOOP) -> Image.Image:
+        frame = self.frames[self.next_frame_index(loop_mode)]
         return frame
 
-    def next_frame_index(self) -> int:
+    def next_frame_index(self, loop_mode: str = LOOP_MODE_LOOP) -> int:
+        mode = normalize_loop_mode(loop_mode)
         index = self.index
+        if mode == LOOP_MODE_ONCE:
+            self.index = min(len(self.frames) - 1, self.index + 1)
+            return min(index, len(self.frames) - 1)
         self.index = (self.index + 1) % len(self.frames)
         return index
+
+    def reset(self) -> None:
+        self.index = 0

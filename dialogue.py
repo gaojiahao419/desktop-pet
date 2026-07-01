@@ -2,6 +2,16 @@ import random
 from typing import Dict, List
 
 
+STATE_DISPLAY_NAMES = {
+    "idle": "待机",
+    "happy": "开心",
+    "angry": "生气",
+    "sleep": "睡觉",
+    "talk": "对话",
+    "hidden": "隐藏",
+}
+
+
 class LocalDialogue:
     def __init__(self) -> None:
         self.categories: Dict[str, List[str]] = {
@@ -54,7 +64,8 @@ class LocalDialogue:
 
     def reply_for_menu(self, action: str, current_state: str = "idle") -> str:
         if action == "status":
-            return f"我现在是 {current_state} 状态。"
+            display_state = STATE_DISPLAY_NAMES.get(current_state, STATE_DISPLAY_NAMES["idle"])
+            return f"我现在是 {display_state} 状态。"
         category = self.menu_map.get(action, "default")
         return self._pick(category)
 

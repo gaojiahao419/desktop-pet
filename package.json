@@ -1,0 +1,23 @@
+{
+  "name": "desktop-pet",
+  "version": "1.0.0",
+  "description": "这是一个 Windows Python 桌面宠物程序，使用 PyQt5 创建透明、无边框、始终置顶的宠物窗口，并提供图形控制面板上传动作素材、调整大小、调整播放速度、设置循环方式和聊天互动。",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "control": "electron electron_app/main.js",
+    "screenshot:control": "node tools/screenshot-control-panel.js",
+    "test": "echo \"Python tests: run python -m pytest -q\" && exit 0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^39.8.10",
+    "playwright": "^1.60.0"
+  }
+}

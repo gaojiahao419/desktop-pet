@@ -47,6 +47,14 @@ class PetRenderer:
 
         return image
 
+    def with_speech_bubble(self, image: Image.Image, text: str) -> Image.Image:
+        result = image.convert("RGBA").copy()
+        if not text:
+            return result
+        draw = ImageDraw.Draw(result)
+        self._draw_bubble(draw, text, result.size)
+        return result
+
     def _body_color(self, state: str) -> tuple:
         if state == "happy":
             return (255, 205, 111, 255)
@@ -87,16 +95,21 @@ class PetRenderer:
         draw.ellipse((cx - 36 - offset, cy + 35, cx - 8 - offset, cy + 52), fill=(88, 92, 84, 255))
         draw.ellipse((cx + 8 + offset, cy + 35, cx + 36 + offset, cy + 52), fill=(88, 92, 84, 255))
 
-    def _draw_bubble(self, draw: ImageDraw.ImageDraw, text: str) -> None:
+    def _draw_bubble(self, draw: ImageDraw.ImageDraw, text: str, canvas_size: tuple = None) -> None:
         clean_text = text[:18]
+        width, height = canvas_size or (self.size, self.size)
+        left = max(6, min(18, width // 12))
+        top = max(6, min(14, height // 10))
+        right = max(left + 80, min(width - left, left + 184))
+        bottom = max(top + 32, min(height - top, top + 44))
         draw.rounded_rectangle(
-            (18, 14, 202, 58),
+            (left, top, right, bottom),
             radius=12,
             fill=(255, 255, 255, 235),
             outline=(65, 65, 70, 230),
             width=2,
         )
-        draw.text((30, 28), clean_text, fill=(35, 35, 40, 255), font=self.font)
+        draw.text((left + 12, top + 14), clean_text, fill=(35, 35, 40, 255), font=self.font)
 
     def _load_font(self) -> ImageFont.ImageFont:
         candidates = [

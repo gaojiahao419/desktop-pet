@@ -3,7 +3,7 @@ from math import sin
 
 
 VALID_STATES = {"idle", "happy", "sleep", "angry", "walk", "talk", "hidden"}
-CLICK_SEQUENCE = ["idle", "happy", "angry", "idle", "walk", "sleep"]
+CLICK_SEQUENCE = ["idle", "happy", "angry", "sleep"]
 
 
 @dataclass(frozen=True)
@@ -31,8 +31,9 @@ class PetAnimator:
         if state != "talk":
             self.clear_speech()
 
-    def say(self, text: str, duration_ticks: int = 80) -> None:
-        self.state = "talk"
+    def say(self, text: str, duration_ticks: int = 80, preserve_state: bool = False) -> None:
+        if not preserve_state:
+            self.state = "talk"
         self.speech_text = text
         self.speech_ticks_left = duration_ticks
 
@@ -53,11 +54,13 @@ class PetAnimator:
 
     def advance(self) -> PetFrame:
         self.tick += 1
-        if self.state == "talk" and self.speech_ticks_left > 0:
+        if self.speech_ticks_left > 0:
             self.speech_ticks_left -= 1
             if self.speech_ticks_left == 0:
+                was_talking = self.state == "talk"
                 self.clear_speech()
-                self.state = "idle"
+                if was_talking:
+                    self.state = "idle"
 
         return PetFrame(
             state=self.state,
