@@ -1,6 +1,6 @@
 # Python 桌面宠物
 
-这是一个 Windows 桌面宠物项目。主程序使用 PyQt5 绘制透明、无边框、始终置顶的宠物窗口；控制台使用 Electron 窗口管理 MP4 宠物素材；聊天功能可以接入本地部署的 Qwen 小模型服务，也可以在模型服务不可用时回退到内置本地回复。
+这是一个 Windows 桌面宠物项目。主程序使用 PyQt5 绘制透明、无边框、始终置顶的宠物窗口；控制台使用 Electron 窗口管理 MP4 宠物素材；聊天功能默认使用内置本地回复，也可以选择接入你自己部署的 Qwen/FastAPI 本地模型服务。
 
 ## 当前功能
 
@@ -8,7 +8,7 @@
 - 左键点击宠物：在待机、开心、生气、睡觉状态之间切换。
 - 右键点击宠物：打开蓝白风格菜单，目前保留“打开对话”和“打开控制台”。
 - 对话窗口跟随宠物移动，消息按用户右侧、宠物左侧的气泡形式展示。
-- 聊天请求通过 `pet_ai_client.py` 调用本地模型服务；服务没开或报错时，会自动使用 `dialogue.py` 的本地预设回复。
+- 聊天请求会优先尝试通过 `pet_ai_client.py` 调用本地模型服务；服务没开或报错时，会自动使用 `dialogue.py` 的本地预设回复。
 - Electron 控制台支持上传 MP4 素材、预览素材、调整大小、调整播放速度、设置循环方式和黑底透明。
 - 运行配置会保存到本地 `pet_settings.json`，方便下次启动恢复素材和参数。
 
@@ -32,7 +32,7 @@
 
 ## 环境准备
 
-建议在普通 Python 环境里运行桌面宠物，在单独的 Conda 环境里运行本地大模型服务。
+建议在普通 Python 环境里运行桌面宠物。模型服务不是本仓库的必需部分；如果只想运行桌面宠物，不需要准备大模型环境。
 
 桌面宠物依赖：
 
@@ -41,32 +41,42 @@ python -m pip install -r requirements.txt
 npm install
 ```
 
-本地模型服务是另一个项目，建议继续放在：
+本地模型服务是可选的另一个项目，建议单独维护，例如：
 
 ```text
 C:\ai\pet_model_lab
 ```
 
-这个宠物项目不保存模型权重，也不负责训练模型。模型下载、测试、微调和 FastAPI 服务建议都放在 `C:\ai\pet_model_lab` 里维护。
+这个宠物项目不保存模型权重，也不包含 Qwen/FastAPI 服务源码，不负责训练模型。模型下载、测试、微调和 FastAPI 服务建议都放在独立项目里维护。
 
 ## 启动顺序
 
-先启动本地模型服务。下面命令里的 `app:app` 要和你模型项目里的 FastAPI 文件名和变量名一致：
-
-```powershell
-conda activate pet-llm
-Set-Location 'C:\ai\pet_model_lab'
-python -m uvicorn app:app --host 127.0.0.1 --port 8765
-```
-
-然后启动桌面宠物：
+只运行桌面宠物时，执行：
 
 ```powershell
 Set-Location '<你的桌面宠物项目目录>'
 python main.py
 ```
 
-如果只想测试宠物界面，不启动模型服务也可以。此时聊天会走本地预设回复。
+如果没有启动模型服务，聊天功能会自动使用内置本地回复。
+
+## 本地模型服务（可选）
+
+本仓库没有包含本地模型服务。桌面宠物只约定一个可选的本地 HTTP 接口：
+
+- 地址：`127.0.0.1:8765`
+- 路径：`/chat`
+- 方法：`POST`
+- 请求 JSON：`{"message": "你好"}`
+- 返回 JSON：`{"reply": "你好，我是桌面宠物。"}`
+
+如果你另外写了 Qwen/FastAPI 服务，可以按这个接口启动。下面命令里的 `app:app` 要和你模型项目里的 FastAPI 文件名和变量名一致：
+
+```powershell
+conda activate pet-llm
+Set-Location 'C:\ai\pet_model_lab'
+python -m uvicorn app:app --host 127.0.0.1 --port 8765
+```
 
 ## 使用方式
 
