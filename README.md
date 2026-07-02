@@ -127,3 +127,7 @@ python -m pytest -q
 ## 开源协议
 
 本项目使用 MIT License，详见 `LICENSE`。
+
+## 项目运行截图
+<img width="2499" height="1441" alt="屏幕截图 2026-07-02 094410" src="https://github.com/user-attachments/assets/fcc11fbe-ce26-473d-b90a-8a9591d7a64d" />
+
